@@ -38,3 +38,6 @@ updates:
         patterns:
           - "ai"
           - "@ai-sdk/*"
+      opencode-ai:
+        patterns:
+          - "@opencode-ai/*"
