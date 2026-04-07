@@ -1,5 +1,5 @@
 {
-  "name": "@templates/opendev-chief-of-staff",
+  "name": "@templates/openxyz-chief-of-staff",
   "private": true,
   "scripts": {
     "build": "openxyz build",
