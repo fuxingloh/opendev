@@ -1,10 +1,8 @@
 import { Command } from "commander";
-import { createOpencode } from "@opencode-ai/sdk";
+import { createOpencode, createOpencodeTui } from "@opencode-ai/sdk";
 import { dirname, join } from "node:path";
 import nextEnv from "@next/env";
 const { loadEnvConfig } = nextEnv;
-
-// TODO(@fuxingloh): what is the port for...
 
 export default new Command("start").option("-p, --port <port>", "Port to listen on").action(action);
 
@@ -19,8 +17,15 @@ export async function action(options: { port?: string }): Promise<void> {
 
   const { client, server } = await createOpencode();
 
-  // client.session.prompt({});
+  // Launch the TUI with stdio inherited so the user can interact
+  const tui = createOpencodeTui({ project: cwd });
 
-  // Keep the process alive
-  await new Promise(() => {});
+  // When the TUI exits, shut down the server
+  await new Promise<void>((resolve) => {
+    process.on("SIGINT", () => {
+      tui.close();
+      server.close();
+      resolve();
+    });
+  });
 }
