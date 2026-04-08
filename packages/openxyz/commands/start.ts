@@ -1,5 +1,6 @@
 import { Command } from "commander";
 import { createOpencode, createOpencodeTui } from "@opencode-ai/sdk";
+import { createInterface } from "node:readline/promises";
 import { dirname, join } from "node:path";
 import nextEnv from "@next/env";
 const { loadEnvConfig } = nextEnv;
@@ -17,15 +18,46 @@ export async function action(options: { port?: string }): Promise<void> {
 
   const { client, server } = await createOpencode();
 
-  // Launch the TUI with stdio inherited so the user can interact
-  const tui = createOpencodeTui({ project: cwd });
+  // Create a session
+  const { data: session } = await client.session.create();
+  if (!session) {
+    console.error("Failed to create session");
+    server.close();
+    process.exit(1);
+  }
 
-  // When the TUI exits, shut down the server
-  await new Promise<void>((resolve) => {
-    process.on("SIGINT", () => {
-      tui.close();
-      server.close();
-      resolve();
-    });
-  });
+  // Subscribe to SSE events for streaming responses
+  const { stream } = await client.event.subscribe();
+  (async () => {
+    for await (const event of stream) {
+      if (event.type === "message.part.updated" && event.properties.part.type === "text") {
+        if (event.properties.delta) {
+          process.stdout.write(event.properties.delta);
+        }
+      }
+    }
+  })();
+
+  // Prompt loop
+  const rl = createInterface({ input: process.stdin, output: process.stdout });
+  try {
+    while (true) {
+      const input = await rl.question("\n> ");
+      if (!input.trim()) continue;
+      if (input.trim() === "/quit") break;
+
+      await client.session.prompt({
+        path: { id: session.id },
+        body: {
+          parts: [{ type: "text", text: input }],
+        },
+      });
+      console.log(); // newline after streamed response
+    }
+  } catch {
+    // readline closed (Ctrl+D)
+  } finally {
+    rl.close();
+    server.close();
+  }
 }
