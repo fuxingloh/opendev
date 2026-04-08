@@ -1,6 +1,8 @@
 import { Command } from "commander";
 import { createOpencode } from "@opencode-ai/sdk";
 import { dirname, join } from "node:path";
+import nextEnv from "@next/env";
+const { loadEnvConfig } = nextEnv;
 
 // TODO(@fuxingloh): what is the port for...
 
@@ -8,6 +10,7 @@ export default new Command("start").option("-p, --port <port>", "Port to listen 
 
 export async function action(options: { port?: string }): Promise<void> {
   const cwd = process.cwd();
+  loadEnvConfig(cwd);
 
   // Resolve the opencode binary from the opencode-ai package so it doesn't need to be in $PATH
   const opencodePkg = import.meta.resolve?.("opencode-ai/package.json") ?? require.resolve("opencode-ai/package.json");

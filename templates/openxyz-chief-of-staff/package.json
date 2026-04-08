@@ -10,7 +10,7 @@
     "@chat-adapter/state-memory": "^4",
     "@chat-adapter/telegram": "^4",
     "chat": "^4",
-    "openxyz": "^0"
+    "openxyz": "workspace:*"
   },
   "devDependencies": {
     "typescript": "^6"

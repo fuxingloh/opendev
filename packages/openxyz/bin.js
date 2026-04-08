@@ -1,2 +1,2 @@
-#!/usr/bin/env bun
-import "./commands/bin";
+#!/usr/bin/env node
+import "./dist/bin.mjs";
