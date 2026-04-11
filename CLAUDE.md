@@ -115,6 +115,8 @@ my-template/
 | 17  | First-party wrappers for popular channels live at `openxyz/channels`                                         | `working/023`                   |
 | 18  | Log every direction/tradeoff/decision to `working/NNN-*.md` proactively                                      | (working style)                 |
 | 19  | Default tool set (`bash`, `read`, `write`, `edit`, `glob`, `grep`) lives on a `Filesystem` class, unprefixed | `working/024`                   |
+| 20  | Default agent routes via `@ai-sdk/openai-compatible`                                                         | `working/025`                   |
+| 21  | Build first, harden later — no dep patches, no speculative error handling, no stability work in early iter   | `working/026`                   |
 
 ## Patterns to learn from
 
