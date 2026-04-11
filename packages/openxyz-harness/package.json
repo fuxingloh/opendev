@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json.schemastore.org/package.json",
+  "name": "@openxyz/harness",
+  "version": "0.0.0",
+  "license": "MIT",
+  "author": "fuxingloh",
+  "type": "module",
+  "dependencies": {
+    "@chat-adapter/state-memory": "^4.25.0",
+    "chat": "^4.25.0",
+    "just-bash": "^2",
+    "zod": "^4"
+  },
+  "devDependencies": {
+    "@types/bun": "latest"
+  },
+  "peerDependencies": {
+    "@ai-sdk/provider": "^3",
+    "ai": "^6"
+  }
+}
