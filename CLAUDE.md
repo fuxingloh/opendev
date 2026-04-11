@@ -94,29 +94,30 @@ my-template/
 
 ## Key design decisions (index)
 
-| #   | Decision                                                                                                     | Doc                             |
-| --- | ------------------------------------------------------------------------------------------------------------ | ------------------------------- |
-| 1   | Channels are the parent; sessions are children of channels                                                   | `working/002`                   |
-| 2   | `openxyz/tools` re-exports `tool` from `ai` + `z` from `zod`                                                 | `working/003` (+ new direction) |
-| 3   | Scan `cwd/tools/[!_]*.{js,ts}` for custom tools                                                              | `working/003`                   |
-| 4   | Skills from `cwd/skills/**/SKILL.md` only                                                                    | `working/006`                   |
-| 5   | VFS as the AI's entire world (`/home/openxyz` + `/mnt/*`)                                                    | `working/008`                   |
-| 6   | Stateless bash per call (`workdir` param, not `cd`)                                                          | `working/008`                   |
-| 7   | Harness is an opt-in menu per template                                                                       | `working/008`                   |
-| 8   | `openxyz.config.ts` (TypeScript) for mount config                                                            | `working/008`                   |
-| 9   | Per-user sessions for Telegram (`telegram:<uid>`)                                                            | `working/016`                   |
-| 10  | Fire-and-forget bridge handlers (avoid chat-sdk LockError)                                                   | `working/004`                   |
-| 11  | Trust chat-sdk to render markdown per platform — no manual fallbacks in bridge code                          | `working/022`                   |
-| 12  | Build on Vercel AI SDK, not fork opencode                                                                    | `working/012`                   |
-| 13  | All channels go through `chat` + `@chat-adapter/*` (no direct platform SDKs)                                 | `working/022`                   |
-| 14  | Reference opencode at `../opencode` (not a dependency)                                                       | `working/020`                   |
-| 15  | Reference openclaw at `../../openclaw` (not a dependency)                                                    | `working/021`                   |
-| 16  | Engine in `@openxyz/harness`; `openxyz` is the CLI + facade templates import from                            | (this file)                     |
-| 17  | First-party wrappers for popular channels live at `openxyz/channels`                                         | `working/023`                   |
-| 18  | Log every direction/tradeoff/decision to `working/NNN-*.md` proactively                                      | (working style)                 |
-| 19  | Default tool set (`bash`, `read`, `write`, `edit`, `glob`, `grep`) lives on a `Filesystem` class, unprefixed | `working/024`                   |
-| 20  | Default agent routes via `@ai-sdk/openai-compatible`                                                         | `working/025`                   |
-| 21  | Build first, harden later — no dep patches, no speculative error handling, no stability work in early iter   | `working/026`                   |
+| #   | Decision                                                                                                           | Doc                             |
+| --- | ------------------------------------------------------------------------------------------------------------------ | ------------------------------- |
+| 1   | Channels are the parent; sessions are children of channels                                                         | `working/002`                   |
+| 2   | `openxyz/tools` re-exports `tool` from `ai` + `z` from `zod`                                                       | `working/003` (+ new direction) |
+| 3   | Scan `cwd/tools/[!_]*.{js,ts}` for custom tools                                                                    | `working/003`                   |
+| 4   | Skills from `cwd/skills/**/SKILL.md` only                                                                          | `working/006`                   |
+| 5   | VFS as the AI's entire world (`/home/openxyz` + `/mnt/*`)                                                          | `working/008`                   |
+| 6   | Stateless bash per call (`workdir` param, not `cd`)                                                                | `working/008`                   |
+| 7   | Harness is an opt-in menu per template                                                                             | `working/008`                   |
+| 8   | `openxyz.config.ts` (TypeScript) for mount config                                                                  | `working/008`                   |
+| 9   | Per-user sessions for Telegram (`telegram:<uid>`)                                                                  | `working/016`                   |
+| 10  | Fire-and-forget bridge handlers (avoid chat-sdk LockError)                                                         | `working/004`                   |
+| 11  | Trust chat-sdk to render markdown per platform — no manual fallbacks in bridge code                                | `working/022`                   |
+| 12  | Build on Vercel AI SDK, not fork opencode                                                                          | `working/012`                   |
+| 13  | All channels go through `chat` + `@chat-adapter/*` (no direct platform SDKs)                                       | `working/022`                   |
+| 14  | Reference opencode at `../opencode` (not a dependency)                                                             | `working/020`                   |
+| 15  | Reference openclaw at `../../openclaw` (not a dependency)                                                          | `working/021`                   |
+| 16  | Engine in `@openxyz/harness`; `openxyz` is the CLI + facade templates import from                                  | (this file)                     |
+| 17  | First-party wrappers for popular channels live at `openxyz/channels`                                               | `working/023`                   |
+| 18  | Log every direction/tradeoff/decision to `working/NNN-*.md` proactively                                            | (working style)                 |
+| 19  | Default tool set (`bash`, `read`, `write`, `edit`, `glob`, `grep`) lives on a `Filesystem` class, unprefixed       | `working/024`                   |
+| 20  | Default agent routes via `@ai-sdk/openai-compatible`                                                               | `working/025`                   |
+| 21  | Build first, harden later — no dep patches, no speculative error handling, no stability work in early iter         | `working/026`                   |
+| 22  | Harness throws if no channels found at startup (no transports = no purpose, revisit when REPL/cron/headless lands) | `working/027`                   |
 
 ## Patterns to learn from
 

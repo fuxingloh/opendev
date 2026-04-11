@@ -1,10 +1,11 @@
-import { start } from "@openxyz/harness/start";
+import { OpenXyzHarness } from "@openxyz/harness/harness";
 import { Command } from "commander";
 
 export default new Command("start").option("-p, --port <port>", "Port to listen on").action(action);
 
 async function action(): Promise<void> {
-  const handle = await start({ cwd: process.cwd() });
+  const openxyz = new OpenXyzHarness({ cwd: process.cwd() });
+  await openxyz.start();
   console.log("openxyz running. Ctrl-C to quit.");
 
   await new Promise<void>((resolve) => {
@@ -12,6 +13,6 @@ async function action(): Promise<void> {
     process.on("SIGTERM", resolve);
   });
 
-  await handle.stop();
+  await openxyz.stop();
   process.exit(0);
 }
