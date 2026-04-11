@@ -106,7 +106,7 @@ my-template/
 | 8   | `openxyz.config.ts` (TypeScript) for mount config                                                            | `working/008`                   |
 | 9   | Per-user sessions for Telegram (`telegram:<uid>`)                                                            | `working/016`                   |
 | 10  | Fire-and-forget bridge handlers (avoid chat-sdk LockError)                                                   | `working/004`                   |
-| 11  | Telegram markdown → fall back to plain text on parse error                                                   | `working/004`                   |
+| 11  | Trust chat-sdk to render markdown per platform — no manual fallbacks in bridge code                          | `working/022`                   |
 | 12  | Build on Vercel AI SDK, not fork opencode                                                                    | `working/012`                   |
 | 13  | All channels go through `chat` + `@chat-adapter/*` (no direct platform SDKs)                                 | `working/022`                   |
 | 14  | Reference opencode at `../opencode` (not a dependency)                                                       | `working/020`                   |
