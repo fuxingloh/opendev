@@ -6,18 +6,9 @@
     "start": "openxyz start"
   },
   "dependencies": {
-    "@chat-adapter/telegram": "^4",
     "openxyz": "workspace:*"
   },
   "devDependencies": {
     "typescript": "^6"
-  },
-  "permissions": {
-    "*": false,
-    "agents/*": false,
-    "sessions/*": false,
-    "skills/*": false,
-    "tools/*": false,
-    "package.json": false
   }
 }

@@ -45,9 +45,9 @@ Learn patterns from both; don't port code wholesale. Both predate the current Bu
 ## Monorepo layout
 
 - **Root** (`package.json`): Bun workspaces (`packages/*`, `templates/*`) via the `workspaces` field, Turborepo, shared Prettier config (120-char width, `prettier-plugin-packagejson`). Package manager and runtime is **Bun** (not npm/pnpm/yarn). No `engines.node` pin.
-- **`packages/openxyz`**: the publishable CLI + library. ESM-only. **No build step** — Bun runs TypeScript natively. `bin.openxyz` in `package.json` points directly at `commands/bin.ts` (which has `#!/usr/bin/env bun`). The `openxyz/tools` subpath export also points at source (`./tools.ts`) — consumers need Bun. Peer-deps `ai@^6` and `@ai-sdk/provider@^3`. When adding a new public module, add it to `package.json` `exports` and `files`.
-- **`packages/openxyz-vfs-telegram`**: placeholder for the telegram VFS adapter (`/mnt/telegram` append-only semantics, see `working/008`). Not implemented yet.
-- **`templates/openxyz-janitor`**: reference template. `channels/telegram.ts`, `tools/echo.ts`, `skills/prd/`, `AGENTS.md`, `package.json` with a `permissions` block. Depends on `openxyz: workspace:*`. (On disk the dir is still named `sessions/` — legacy, rename pending.)
+- **`packages/openxyz`**: the publishable **CLI + thin facade** that templates (downstream users) depend on. Owns the `openxyz` bin and the re-export surface (`openxyz/tools`, etc.). ESM-only. **No build step** — Bun runs TypeScript natively. `bin.openxyz` in `package.json` points directly at `commands/bin.ts` (`#!/usr/bin/env bun`). Subpath exports point at source (`./tools.ts`) — consumers need Bun. Peer-deps `ai@^6` and `@ai-sdk/provider@^3`. When adding a new public module, add it to `package.json` `exports` and `files`. Keep this package small — the real work lives in `@openxyz/harness`.
+- **`packages/openxyz-harness`** (`@openxyz/harness`): the **engine**. Agent loop, tool registry/discovery, VFS (`just-bash` + `MountableFs`), channel bridge, session store, streaming. Scoped package, internal to the openxyz family. Templates do **not** import from here directly — they import from `openxyz`, which re-exports whatever harness surface the template needs. This keeps template imports simple (`import { tool } from "openxyz/tools"`) and lets the engine evolve independently of the public API.
+- **`templates/openxyz-janitor`**: reference template. `channels/telegram.ts`, `tools/echo.ts`, `skills/prd/`, `AGENTS.md`, `package.json` with a `permissions` block. Depends on `openxyz: workspace:*`.
 - **Turborepo** (`turbo.json`): `build`, `test`, `lint`, `clean`, `dev` task definitions remain for future packages that may need them; `packages/openxyz` currently has no build script (runs source directly).
 
 ## Commands
@@ -94,23 +94,27 @@ my-template/
 
 ## Key design decisions (index)
 
-| #   | Decision                                                                     | Doc                             |
-| --- | ---------------------------------------------------------------------------- | ------------------------------- |
-| 1   | Channels are the parent; sessions are children of channels                   | `working/002`                   |
-| 2   | `openxyz/tools` re-exports `tool` from `ai` + `z` from `zod`                 | `working/003` (+ new direction) |
-| 3   | Scan `cwd/tools/[!_]*.{js,ts}` for custom tools                              | `working/003`                   |
-| 4   | Skills from `cwd/skills/**/SKILL.md` only                                    | `working/006`                   |
-| 5   | VFS as the AI's entire world (`/home/openxyz` + `/mnt/*`)                    | `working/008`                   |
-| 6   | Stateless bash per call (`workdir` param, not `cd`)                          | `working/008`                   |
-| 7   | Harness is an opt-in menu per template                                       | `working/008`                   |
-| 8   | `openxyz.config.ts` (TypeScript) for mount config                            | `working/008`                   |
-| 9   | Per-user sessions for Telegram (`telegram:<uid>`)                            | `working/016`                   |
-| 10  | Fire-and-forget bridge handlers (avoid chat-sdk LockError)                   | `working/004`                   |
-| 11  | Telegram markdown → fall back to plain text on parse error                   | `working/004`                   |
-| 12  | Build on Vercel AI SDK, not fork opencode                                    | `working/012`                   |
-| 13  | All channels go through `chat` + `@chat-adapter/*` (no direct platform SDKs) | `working/022`                   |
-| 14  | Reference opencode at `../opencode` (not a dependency)                       | `working/020`                   |
-| 15  | Reference openclaw at `../../openclaw` (not a dependency)                    | `working/021`                   |
+| #   | Decision                                                                                                     | Doc                             |
+| --- | ------------------------------------------------------------------------------------------------------------ | ------------------------------- |
+| 1   | Channels are the parent; sessions are children of channels                                                   | `working/002`                   |
+| 2   | `openxyz/tools` re-exports `tool` from `ai` + `z` from `zod`                                                 | `working/003` (+ new direction) |
+| 3   | Scan `cwd/tools/[!_]*.{js,ts}` for custom tools                                                              | `working/003`                   |
+| 4   | Skills from `cwd/skills/**/SKILL.md` only                                                                    | `working/006`                   |
+| 5   | VFS as the AI's entire world (`/home/openxyz` + `/mnt/*`)                                                    | `working/008`                   |
+| 6   | Stateless bash per call (`workdir` param, not `cd`)                                                          | `working/008`                   |
+| 7   | Harness is an opt-in menu per template                                                                       | `working/008`                   |
+| 8   | `openxyz.config.ts` (TypeScript) for mount config                                                            | `working/008`                   |
+| 9   | Per-user sessions for Telegram (`telegram:<uid>`)                                                            | `working/016`                   |
+| 10  | Fire-and-forget bridge handlers (avoid chat-sdk LockError)                                                   | `working/004`                   |
+| 11  | Telegram markdown → fall back to plain text on parse error                                                   | `working/004`                   |
+| 12  | Build on Vercel AI SDK, not fork opencode                                                                    | `working/012`                   |
+| 13  | All channels go through `chat` + `@chat-adapter/*` (no direct platform SDKs)                                 | `working/022`                   |
+| 14  | Reference opencode at `../opencode` (not a dependency)                                                       | `working/020`                   |
+| 15  | Reference openclaw at `../../openclaw` (not a dependency)                                                    | `working/021`                   |
+| 16  | Engine in `@openxyz/harness`; `openxyz` is the CLI + facade templates import from                            | (this file)                     |
+| 17  | First-party wrappers for popular channels live at `openxyz/channels`                                         | `working/023`                   |
+| 18  | Log every direction/tradeoff/decision to `working/NNN-*.md` proactively                                      | (working style)                 |
+| 19  | Default tool set (`bash`, `read`, `write`, `edit`, `glob`, `grep`) lives on a `Filesystem` class, unprefixed | `working/024`                   |
 
 ## Patterns to learn from
 

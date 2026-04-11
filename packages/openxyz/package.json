@@ -7,10 +7,13 @@
   "bin": "commands/bin.ts",
   "files": [
     "commands",
-    "tools.ts"
+    "tools.ts",
+    "channels.ts",
+    "tsconfig.json"
   ],
   "dependencies": {
     "@chat-adapter/telegram": "^4.24.0",
+    "@openxyz/harness": "workspace:*",
     "chat": "^4.24.0",
     "commander": "^14.0.3",
     "zod": "^4"
