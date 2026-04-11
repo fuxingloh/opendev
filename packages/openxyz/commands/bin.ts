@@ -10,4 +10,7 @@ const cli = new Command();
 cli.name("openxyz").version(pkg.version);
 cli.addCommand(start);
 
+// TODO(?): to work on, to generate a single binary.js to basically do this: "bun binary.js"
+// cli.addCommand(build);
+
 await cli.parseAsync();
