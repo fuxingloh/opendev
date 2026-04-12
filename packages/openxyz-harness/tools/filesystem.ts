@@ -5,24 +5,6 @@ import { z } from "zod";
 const MAX_BYTES = 50_000;
 const DEFAULT_CWD = "/home/openxyz";
 
-const BASH_DESCRIPTION = `Executes a bash command in a sandboxed shell with optional timeout.
-
-All commands run in /home/openxyz (your workspace) by default. Use \`workdir\` to run in a different directory. Prefer \`workdir\` over \`cd <dir> && <command>\`.
-
-Layout:
-  /home/openxyz/   — your workspace (tools, skills, channels, agents, documents)
-  /mnt/<name>/     — mounted backends (e.g. gdrive, notion)
-
-Prefer the purpose-built filesystem tools (\`read\`, \`write\`, \`edit\`, \`glob\`, \`grep\`) over bash when the task fits one of them — they return structured output and are cheaper. Reach for \`bash\` when you need a real shell: piping, scripts, installed binaries, archive handling, process inspection.
-
-Notes:
-  - Write a clear 5-10 word \`description\` of what the command does.
-  - Optional \`timeout\` in milliseconds, default 120000.
-  - Output is concatenated stdout+stderr, capped at 50KB.
-  - For parallel work, issue multiple tool calls in one message.
-  - Use \`;\` for sequential commands where failures don't matter; \`&&\` when later commands depend on earlier success.
-  - Do NOT use newlines to separate commands (newlines are fine inside quoted strings).`;
-
 export class Filesystem {
   readonly cwd: string;
   #bash: Bash;
@@ -40,7 +22,25 @@ export class Filesystem {
 
     return {
       bash: tool({
-        description: BASH_DESCRIPTION,
+        description: [
+          "Executes a bash command in a sandboxed shell with optional timeout.",
+          "",
+          "All commands run in /home/openxyz (your workspace) by default. Use `workdir` to run in a different directory. Prefer `workdir` over `cd <dir> && <command>`.",
+          "",
+          "Layout:",
+          "  /home/openxyz/   — your workspace (tools, skills, channels, agents, documents)",
+          "  /mnt/<name>/     — mounted backends (e.g. gdrive, notion)",
+          "",
+          "Prefer the purpose-built filesystem tools (`read`, `write`, `edit`, `glob`, `grep`) over bash when the task fits one of them — they return structured output and are cheaper. Reach for `bash` when you need a real shell: piping, scripts, installed binaries, archive handling, process inspection.",
+          "",
+          "Notes:",
+          "  - Write a clear 5-10 word `description` of what the command does.",
+          "  - Optional `timeout` in milliseconds, default 120000.",
+          "  - Output is concatenated stdout+stderr, capped at 50KB.",
+          "  - For parallel work, issue multiple tool calls in one message.",
+          "  - Use `;` for sequential commands where failures don't matter; `&&` when later commands depend on earlier success.",
+          "  - Do NOT use newlines to separate commands (newlines are fine inside quoted strings).",
+        ].join("\n"),
         inputSchema: z.object({
           command: z.string().describe("The bash command to execute."),
           workdir: z.string().optional().describe("Working directory. Defaults to /home/openxyz."),
