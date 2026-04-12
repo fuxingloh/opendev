@@ -1,20 +1,33 @@
 import { basename } from "node:path";
-import { Bash, MountableFs, ReadWriteFs } from "just-bash";
+import { Bash, MountableFs, ReadWriteFs, OverlayFs } from "just-bash";
 import { tool } from "ai";
+import type { Tool } from "ai";
 import { z } from "zod";
-
 const MAX_BYTES = 50_000;
 
-export class Filesystem {
-  readonly cwd: string;
+const access = z.enum(["read-only", "read-write"]);
+
+export const FilesystemConfigSchema = z.union([access, z.record(z.string(), access)]).default("read-write");
+
+export type FilesystemConfig = z.infer<typeof FilesystemConfigSchema>;
+
+export class FilesystemTools {
   readonly #home: string;
   readonly #bash: Bash;
 
-  constructor(cwd: string) {
-    this.cwd = cwd;
+  constructor(cwd: string, config?: FilesystemConfig) {
     this.#home = `/home/${basename(cwd)}`;
+    const permissions = typeof config === "string" ? { harness: config } : (config ?? {});
+
+    // TODO(?): IMPORTANT make sure .env, .gitignore, node_modules (maybe?) are not exposed to the agent
+    const harness =
+      (permissions.harness ?? "read-write") === "read-write"
+        ? new ReadWriteFs({ root: cwd })
+        : new OverlayFs({ root: cwd, readOnly: true });
+
+    // TODO: mount /mnt/* paths from perms when external mounts are implemented
     const fs = new MountableFs({
-      mounts: [{ mountPoint: this.#home, filesystem: new ReadWriteFs({ root: cwd }) }],
+      mounts: [{ mountPoint: this.#home, filesystem: harness }],
     });
     this.#bash = new Bash({ fs, cwd: this.#home, python: true, javascript: true });
   }
