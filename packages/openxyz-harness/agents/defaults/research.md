@@ -1,11 +1,11 @@
 ---
 description: "Web research — search the internet, fetch pages, summarize findings"
+filesystem: "read-only"
 tools:
-  bash:
-    read-only: true
+  bash: true
+  read: true
   web_search: true
   web_fetch: true
-  read: true
 skills: []
 ---
 
