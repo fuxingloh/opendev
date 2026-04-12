@@ -3,6 +3,10 @@ import { tool } from "ai";
 import { z } from "zod";
 import matter from "gray-matter";
 
+// TODO: SKILL.md frontmatter could support `allowed-tools` to restrict which tools the agent
+//  can use while executing a skill (e.g. research skill only allows web_search + web_fetch).
+//  Claude Code and opencode both support this. May or may not want this — skills currently
+//  just inject instructions, they don't constrain the tool set.
 export interface SkillInfo {
   name: string;
   description: string;
