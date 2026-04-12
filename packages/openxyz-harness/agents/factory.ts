@@ -1,4 +1,4 @@
-import { ToolLoopAgent } from "ai";
+import { ToolLoopAgent, tool } from "ai";
 import type { Tool } from "ai";
 import { basename, join } from "node:path";
 import { existsSync } from "node:fs";
@@ -35,6 +35,13 @@ function formatSkillsXml(skills: SkillInfo[]): string {
     ),
     "</available_skills>",
   ].join("\n");
+}
+
+function formatAgentList(defs: Record<string, AgentDef>): string {
+  return Object.values(defs)
+    .sort((a, b) => a.name.localeCompare(b.name))
+    .map((a) => `- **${a.name}**: ${a.description}`)
+    .join("\n");
 }
 
 const DEFAULTS_DIR = new URL("./defaults/", import.meta.url).pathname;
@@ -76,6 +83,7 @@ export class AgentFactory {
   #skills: SkillInfo[] = [];
   #customTools: Record<string, Tool> = {};
   #defs: Record<string, AgentDef> = {};
+  #agentsmd?: string;
 
   constructor(cwd: string) {
     this.#cwd = cwd;
@@ -84,34 +92,76 @@ export class AgentFactory {
 
   async init(): Promise<void> {
     const customDir = join(this.#cwd, "agents");
-    const [skills, customTools, defaults, overrides] = await Promise.all([
+    const [skills, customTools, defaults, overrides, agentsmd] = await Promise.all([
       scanSkills(this.#cwd),
       scanTools(this.#cwd),
       scanDir(DEFAULTS_DIR),
       existsSync(customDir) ? scanDir(customDir) : {},
+      Bun.file(join(this.#cwd, "AGENTS.md"))
+        .text()
+        .catch(() => undefined),
     ]);
     this.#skills = skills;
     this.#customTools = customTools;
     this.#defs = { ...defaults, ...overrides };
+    this.#agentsmd = agentsmd;
   }
 
-  async load(): Promise<Record<string, ToolLoopAgent>> {
-    const agents: Record<string, ToolLoopAgent> = {};
-    for (const [name, def] of Object.entries(this.#defs)) {
-      agents[name] = await this.#create(def);
+  get defs(): Record<string, AgentDef> {
+    return this.#defs;
+  }
+
+  async create(name: string, opts?: { delegate?: boolean }): Promise<ToolLoopAgent> {
+    const def = this.#defs[name];
+    if (!def) {
+      const available = Object.keys(this.#defs).join(", ");
+      throw new Error(`[openxyz] agent "${name}" not found. Available: ${available}`);
     }
-    return agents;
-  }
 
-  async #create(def: AgentDef): Promise<ToolLoopAgent> {
     const tools = this.#loadTools(def);
+    if (opts?.delegate !== false) {
+      tools.delegate = this.#createDelegateTool();
+    }
+
     const skills = this.#filterSkills(def);
-    const instructions = await this.#buildInstructions(def, tools, skills);
+    const instructions = this.#buildInstructions(def, tools, skills);
 
     return new ToolLoopAgent({
       model,
       instructions: { role: "system" as const, content: instructions },
       tools,
+    });
+  }
+
+  #createDelegateTool() {
+    const factory = this;
+
+    return tool({
+      description: [
+        "Delegate work to a specialized agent that runs in its own context.",
+        "",
+        "Use this when:",
+        "- You need to research multiple things in parallel",
+        "- A task benefits from a fresh, focused context",
+        "- A specialized agent exists for the work",
+        "",
+        "Each delegated task runs independently — it cannot see your conversation history.",
+        "Launch multiple delegate calls in parallel when the work is independent.",
+        "",
+        "## Available Agents",
+        // TODO(?): allow agents to agents communication to be configurable
+        formatAgentList(factory.#defs),
+      ].join("\n"),
+      inputSchema: z.object({
+        description: z.string().describe("Short (3-5 words) task description."),
+        prompt: z.string().describe("Full task prompt for the agent."),
+        agent: z.string().optional().describe("Agent name. Defaults to 'general'."),
+      }),
+      execute: async ({ description, prompt, agent: name }) => {
+        const sub = await factory.create(name ?? "general", { delegate: false });
+        const result = await sub.generate({ prompt });
+        return `<delegate_result agent="${name ?? "general"}" description="${description}">\n${result.text}\n</delegate_result>`;
+      },
     });
   }
 
@@ -143,8 +193,13 @@ export class AgentFactory {
     return this.#skills.filter((s) => set.has(s.name));
   }
 
-  async #buildInstructions(def: AgentDef, tools: Record<string, Tool>, skills: SkillInfo[]): Promise<string> {
+  #buildInstructions(def: AgentDef, tools: Record<string, Tool>, skills: SkillInfo[]): string {
+    // Order: stable prefix first (basePrompt + AGENTS.md), then per-agent sections (skills, env, body)
     const parts = [basePrompt];
+
+    if (this.#agentsmd) {
+      parts.push("## Project Instructions\n\n" + this.#agentsmd.trim());
+    }
 
     if (skills.length > 0 && tools["skill"]) {
       parts.push(
@@ -156,11 +211,6 @@ export class AgentFactory {
           formatSkillsXml(skills),
         ].join("\n"),
       );
-    }
-
-    const agentsFile = Bun.file(join(this.#cwd, "AGENTS.md"));
-    if (await agentsFile.exists()) {
-      parts.push("## Project Instructions\n\n" + (await agentsFile.text()).trim());
     }
 
     const fsConfig = def.filesystem;

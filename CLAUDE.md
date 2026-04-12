@@ -262,6 +262,7 @@ Read these first for deep context on any topic.
 
 - **035** — Env: `readEnv` with Zod (supersedes 031 — immediate validation, no registry, no envalid)
 - **036** — System prompt structure and caching (`instructions` as `Array<SystemModelMessage>`, stable prefix + dynamic tail)
+- **041** — System prompt bundling vs splitting (prefix caching is position-based not message-based, bundle is fine)
 - **037** — Opencode feature survey (MCP, permissions, retry, session persistence, plugins)
 - **038** — Task tool implementation plan (subagent spawning, agent scanner, tool filtering)
 - **039** — Workspace files pattern from openclaw (USER.md, MEMORY.md, TOOLS.md, HEARTBEAT.md, BOOTSTRAP.md)

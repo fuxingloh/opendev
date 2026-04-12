@@ -1,14 +1,13 @@
 import { Chat, toAiMessages } from "chat";
 import type { Thread } from "chat";
 import { createMemoryState } from "@chat-adapter/state-memory";
-import type { ToolLoopAgent } from "ai";
 import { scanChannels, type ChannelEntry } from "./channels";
 import { AgentFactory } from "./agents/factory";
 
 export class OpenXyzHarness {
   readonly cwd: string;
   #chat?: Chat;
-  #agents: Record<string, ToolLoopAgent> = {};
+  #factory?: AgentFactory;
   #channels: Record<string, ChannelEntry> = {};
 
   constructor(opts: { cwd: string }) {
@@ -19,16 +18,15 @@ export class OpenXyzHarness {
     const factory = new AgentFactory(this.cwd);
     const [, channels] = await Promise.all([factory.init(), this.#loadChannels()]);
 
-    this.#agents = await factory.load();
-    this.#channels = channels;
-
     // Validate: every channel references an agent that exists
-    //  TODO: /restart a command that can be issued to restart the harness should check all these
     for (const [name, entry] of Object.entries(channels)) {
-      if (!this.#agents[entry.agent]) {
+      if (!factory.defs[entry.agent]) {
         throw new Error(`[openxyz] channel "${name}" references agent "${entry.agent}" but no such agent exists`);
       }
     }
+
+    this.#factory = factory;
+    this.#channels = channels;
 
     const adapters = Object.fromEntries(Object.entries(channels).map(([k, v]) => [k, v.adapter]));
     const chat = new Chat({
@@ -67,8 +65,7 @@ export class OpenXyzHarness {
     if (!channel) return;
     if (channel.allowlist && !channel.allowlist.has(userId)) return;
 
-    const agent = this.#agents[channel.agent];
-    if (!agent) return;
+    const agent = await this.#factory!.create(channel.agent);
 
     // TODO: subscribe() is idempotent but called on every reply — redundant after first contact.
     await thread.subscribe();
