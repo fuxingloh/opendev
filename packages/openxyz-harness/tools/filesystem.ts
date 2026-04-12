@@ -7,7 +7,7 @@ const DEFAULT_CWD = "/home/openxyz";
 
 export class Filesystem {
   readonly cwd: string;
-  #bash: Bash;
+  readonly #bash: Bash;
 
   constructor(cwd: string) {
     this.cwd = cwd;
@@ -17,7 +17,7 @@ export class Filesystem {
     this.#bash = new Bash({ fs, cwd: DEFAULT_CWD, python: true, javascript: true });
   }
 
-  getTools() {
+  tools() {
     const shell = this.#bash;
 
     return {

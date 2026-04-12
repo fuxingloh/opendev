@@ -1,6 +1,6 @@
 import { ToolLoopAgent } from "ai";
+import type { Tool } from "ai";
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
-import { Filesystem } from "../tools/filesystem";
 import generic from "./prompts/generic.md" with { type: "text" };
 
 // TODO(?): During testing:
@@ -11,13 +11,10 @@ const zen = createOpenAICompatible({
   baseURL: "https://opencode.ai/zen/v1",
 });
 
-export function create(cwd: string) {
-  const fs = new Filesystem(cwd);
+export function create(tools: Record<string, Tool>) {
   return new ToolLoopAgent({
     model: zen("big-pickle"),
     instructions: generic,
-    tools: fs.getTools(),
+    tools,
   });
 }
-
-// TODO(?): currently stop condition not scalable.

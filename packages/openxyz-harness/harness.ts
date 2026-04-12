@@ -2,19 +2,37 @@ import { Chat, toAiMessages } from "chat";
 import type { Thread } from "chat";
 import { createMemoryState } from "@chat-adapter/state-memory";
 import { scanChannels } from "./channels";
+import { Filesystem } from "./tools/filesystem";
+import { web_fetch, web_search } from "./tools/web";
+import { scanSkills, createSkillTool } from "./tools/skill";
+import { scanTools } from "./tools/custom";
 import { create as createAgent } from "./agents/main.ts";
 
 export class OpenXyzHarness {
   readonly cwd: string;
-  #agent: ReturnType<typeof createAgent>;
+  #agent?: ReturnType<typeof createAgent>;
   #chat?: Chat;
 
   constructor(opts: { cwd: string }) {
     this.cwd = opts.cwd;
-    this.#agent = createAgent(opts.cwd);
+  }
+
+  async #getTools() {
+    const fs = new Filesystem(this.cwd);
+    const [skills, custom] = await Promise.all([scanSkills(this.cwd), scanTools(this.cwd)]);
+
+    return {
+      ...fs.tools(),
+      web_fetch,
+      web_search,
+      skill: createSkillTool(skills),
+      ...custom,
+    };
   }
 
   async start(): Promise<void> {
+    const tools = await this.#getTools();
+    this.#agent = createAgent(tools);
     const adapters = await scanChannels(this.cwd);
     if (Object.keys(adapters).length === 0) {
       // Fail fast: without at least one channel, the harness has no way to receive messages. See working/027.
@@ -52,7 +70,17 @@ export class OpenXyzHarness {
     await thread.startTyping();
     const fetched = await thread.adapter.fetchMessages(thread.id, { limit: 20 });
     const history = await toAiMessages(fetched.messages);
-    const result = await this.#agent.stream({ prompt: history });
-    await thread.post(result.fullStream);
+    const result = await this.#agent!.stream({ prompt: history });
+    try {
+      await thread.post(result.fullStream);
+    } catch {
+      // TODO: chat-sdk's Telegram adapter doesn't escape MarkdownV2 entities properly.
+      //  Fall back to plain text (no parse_mode) until upstream fixes it.
+      let text = "";
+      for await (const chunk of result.textStream) {
+        text += chunk;
+      }
+      await thread.post(text);
+    }
   }
 }
