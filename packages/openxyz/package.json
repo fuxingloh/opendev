@@ -8,9 +8,8 @@
   "files": [
     "commands",
     "tools.ts",
-    "channels.ts",
+    "channels/*",
     "env.ts",
-    "zod.ts",
     "tsconfig.json"
   ],
   "dependencies": {

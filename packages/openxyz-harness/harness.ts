@@ -7,6 +7,7 @@ import { web_fetch, web_search } from "./tools/web";
 import { scanSkills, createSkillTool } from "./tools/skill";
 import { scanTools } from "./tools/custom";
 import { create as createAgent } from "./agents/main.ts";
+import type { Tool } from "ai";
 
 export class OpenXyzHarness {
   readonly cwd: string;
@@ -16,19 +17,6 @@ export class OpenXyzHarness {
 
   constructor(opts: { cwd: string }) {
     this.cwd = opts.cwd;
-  }
-
-  async #getTools() {
-    const fs = new Filesystem(this.cwd);
-    const [skills, custom] = await Promise.all([scanSkills(this.cwd), scanTools(this.cwd)]);
-
-    return {
-      ...fs.tools(),
-      web_fetch,
-      web_search,
-      skill: createSkillTool(skills),
-      ...custom,
-    };
   }
 
   async start(): Promise<void> {
@@ -62,8 +50,17 @@ export class OpenXyzHarness {
     await chat.initialize();
   }
 
-  async stop(): Promise<void> {
-    await this.#chat?.shutdown();
+  async #getTools(): Promise<Record<string, Tool>> {
+    const fs = new Filesystem(this.cwd);
+    const [skills, custom] = await Promise.all([scanSkills(this.cwd), scanTools(this.cwd)]);
+
+    return {
+      ...fs.tools(),
+      web_fetch,
+      web_search,
+      skill: createSkillTool(skills),
+      ...custom,
+    };
   }
 
   async #reply(thread: Thread): Promise<void> {
@@ -88,5 +85,9 @@ export class OpenXyzHarness {
       }
       await thread.post(text);
     }
+  }
+
+  async stop(): Promise<void> {
+    await this.#chat?.shutdown();
   }
 }
