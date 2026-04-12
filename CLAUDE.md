@@ -118,6 +118,8 @@ my-template/
 | 20  | Default agent routes via `@ai-sdk/openai-compatible`                                                               | `working/025`                   |
 | 21  | Build first, harden later — no dep patches, no speculative error handling, no stability work in early iter         | `working/026`                   |
 | 22  | Harness throws if no channels found at startup (no transports = no purpose, revisit when REPL/cron/headless lands) | `working/027`                   |
+| 23  | Tool names are `snake_case` (`web_fetch`, `web_search`); single-word tools already conform                         | `working/028`                   |
+| 24  | `skill`, `web_fetch`, `web_search` tools + custom tool loading from `cwd/tools/`; skills fully contained           | `working/029`                   |
 
 ## Patterns to learn from
 
@@ -223,6 +225,7 @@ Read these first for deep context on any topic.
 
 - **013** — Architecture patterns from opencode (what to look at)
 - **014** — Code style guide from opencode (how to write code)
+- **028** — Claude Code + opencode tool surface comparison (what tools exist, what we adopted, what's next)
 
 ### Historical context (read when investigating prior art)
 

@@ -9,11 +9,14 @@
     "@ai-sdk/openai-compatible": "^2.0.41",
     "@chat-adapter/state-memory": "^4.25.0",
     "chat": "^4.25.0",
+    "gray-matter": "^4.0.3",
     "just-bash": "^2",
+    "turndown": "^7.2.4",
     "zod": "^4"
   },
   "devDependencies": {
-    "@types/bun": "latest"
+    "@types/bun": "latest",
+    "@types/turndown": "^5.0.6"
   },
   "peerDependencies": {
     "@ai-sdk/provider": "^3",
