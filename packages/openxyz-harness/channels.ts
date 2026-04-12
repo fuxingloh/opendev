@@ -6,6 +6,9 @@ export interface ChannelEntry {
   allowlist: Set<string> | undefined;
 }
 
+// TODO(?): move this logic to async #loadChannels() {
+//  no need for it to be here?
+
 export async function scanChannels(cwd: string): Promise<Record<string, ChannelEntry>> {
   const glob = new Bun.Glob("channels/[!_]*.ts");
   const channels: Record<string, ChannelEntry> = {};
