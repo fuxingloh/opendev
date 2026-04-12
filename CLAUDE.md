@@ -5,8 +5,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Open work
 
 - [x] Inject skill info into system prompt so the agent proactively loads skills (`working/033`)
-- [ ] Load agents from `agents/*.md` in templates — frontmatter config + body as system prompt (`working/034`)
-- [ ] Implement `task` tool for spawning subagents with restricted tools (`working/034`)
+- [x] Load agents from `agents/*.md` in templates — frontmatter config + body as system prompt (`working/034`)
+- [x] Implement `delegate` tool for spawning subagents with restricted tools (`working/038`)
 - [ ] Add LLM prompt caching (`applyCaching` on system/user messages) — free perf win (`working/032`)
 - [ ] File upstream issue on vercel/chat for Telegram MarkdownV2 entity escaping
 - [ ] End-to-end test: `cd templates/openxyz-janitor && bun start` with real Telegram bot
