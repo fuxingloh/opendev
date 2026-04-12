@@ -134,7 +134,8 @@ my-template/
 | 22  | Harness throws if no channels found at startup (no transports = no purpose, revisit when REPL/cron/headless lands) | `working/027`                   |
 | 23  | Tool names are `snake_case` (`web_fetch`, `web_search`); single-word tools already conform                         | `working/028`                   |
 | 24  | `skill`, `web_fetch`, `web_search` tools + custom tool loading from `cwd/tools/`; skills fully contained           | `working/029`                   |
-| 25  | Env declarations via `Symbol.for("openxyz.env")` — wrappers attach, harness logs at startup, fails on missing      | `working/031`                   |
+| 25  | Env via `readEnv(key, { description, schema? })` — Zod validation, immediate error, no extra deps                  | `working/035`                   |
+| 26  | `scanChannels` returns `Record<string, { adapter, allowlist }>` — single record, not split maps                    | (this file)                     |
 
 ## Patterns to learn from
 
@@ -244,6 +245,10 @@ Read these first for deep context on any topic.
 - **032** — Compaction, LLM caching, and subagents (opencode research — future implementation reference)
 - **033** — Skill auto-loading (why agent doesn't use skills, dual-injection fix)
 - **034** — Agent loading from `agents/*.md` + task tool for subagents (opencode research)
+
+### Env and config
+
+- **035** — Env: `readEnv` with Zod (supersedes 031 — immediate validation, no registry, no envalid)
 
 ### Historical context (read when investigating prior art)
 

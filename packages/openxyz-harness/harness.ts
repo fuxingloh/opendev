@@ -13,21 +13,18 @@ export class OpenXyzHarness {
   readonly cwd: string;
   #agent?: ReturnType<typeof createAgent>;
   #chat?: Chat;
-  #allowlists: Record<string, Set<string>> = {};
+  #channels: Record<string, { adapter: unknown; allowlist: Set<string> | undefined }> = {};
 
   constructor(opts: { cwd: string }) {
     this.cwd = opts.cwd;
   }
 
   async start(): Promise<void> {
-    const [tools, { adapters, allowlists }] = await Promise.all([this.#getTools(), scanChannels(this.cwd)]);
+    const [tools, channels] = await Promise.all([this.#loadTools(), this.#loadChannels()]);
     this.#agent = createAgent(tools);
-    this.#allowlists = allowlists;
-    if (Object.keys(adapters).length === 0) {
-      // Fail fast: without at least one channel, the harness has no way to receive messages. See working/027.
-      throw new Error("[openxyz] no channels found under channels/*.ts — nothing to run");
-    }
+    this.#channels = channels;
 
+    const adapters = Object.fromEntries(Object.entries(channels).map(([k, v]) => [k, v.adapter]));
     const chat = new Chat({
       adapters: adapters as Record<string, never>,
       state: createMemoryState(),
@@ -50,7 +47,7 @@ export class OpenXyzHarness {
     await chat.initialize();
   }
 
-  async #getTools(): Promise<Record<string, Tool>> {
+  async #loadTools(): Promise<Record<string, Tool>> {
     const fs = new Filesystem(this.cwd);
     const [skills, custom] = await Promise.all([scanSkills(this.cwd), scanTools(this.cwd)]);
 
@@ -63,12 +60,23 @@ export class OpenXyzHarness {
     };
   }
 
+  async #loadChannels() {
+    const channels = await scanChannels(this.cwd);
+    if (Object.keys(channels).length === 0) {
+      // Fail fast: without at least one channel, the harness has no way to receive messages. See working/027.
+      throw new Error("[openxyz] no channels found under channels/*.ts — nothing to run");
+    }
+    return channels;
+  }
+
   async #reply(thread: Thread): Promise<void> {
     // Allowlist check: thread.id is "channel:user_id", match against the channel's allowlist
-    const [channel, userId] = thread.id.split(":");
-    const allowed = this.#allowlists[channel];
-    if (allowed && !allowed.has(userId)) return;
+    const [channel, userId] = thread.id.split(":") as [string, string];
+    const allowlist = this.#channels[channel]?.allowlist;
+    if (allowlist && !allowlist.has(userId)) return;
 
+    // TODO: subscribe() is idempotent but called on every reply — redundant after first contact.
+    //  Move to onDirectMessage handler only, or remove if all channels are pure DM.
     await thread.subscribe();
     await thread.startTyping();
     const fetched = await thread.adapter.fetchMessages(thread.id, { limit: 20 });
