@@ -1,13 +1,15 @@
 import { telegram } from "openxyz/channels";
-import { getEnv } from "openxyz/env";
+import { readEnv } from "openxyz/env";
+import { z } from "openxyz/zod";
 
 export default telegram({
-  botToken: getEnv("TELEGRAM_BOT_TOKEN", {
+  botToken: readEnv("TELEGRAM_BOT_TOKEN", {
     description: "Telegram Bot API token from @BotFather",
+    schema: z.string(),
   }),
 });
 
-export const allowlist = getEnv("TELEGRAM_ALLOWLIST", {
-  required: false,
+export const allowlist = readEnv("TELEGRAM_ALLOWLIST", {
   description: "Comma-separated Telegram user IDs allowed to interact",
-})?.split(",");
+  schema: z.string().transform((s) => s.split(",").map((v) => v.trim())),
+});
