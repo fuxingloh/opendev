@@ -12,6 +12,7 @@ export class OpenXyzHarness {
   readonly cwd: string;
   #agent?: ReturnType<typeof createAgent>;
   #chat?: Chat;
+  #allowlists: Record<string, Set<string>> = {};
 
   constructor(opts: { cwd: string }) {
     this.cwd = opts.cwd;
@@ -31,9 +32,9 @@ export class OpenXyzHarness {
   }
 
   async start(): Promise<void> {
-    const tools = await this.#getTools();
+    const [tools, { adapters, allowlists }] = await Promise.all([this.#getTools(), scanChannels(this.cwd)]);
     this.#agent = createAgent(tools);
-    const adapters = await scanChannels(this.cwd);
+    this.#allowlists = allowlists;
     if (Object.keys(adapters).length === 0) {
       // Fail fast: without at least one channel, the harness has no way to receive messages. See working/027.
       throw new Error("[openxyz] no channels found under channels/*.ts — nothing to run");
@@ -66,6 +67,11 @@ export class OpenXyzHarness {
   }
 
   async #reply(thread: Thread): Promise<void> {
+    // Allowlist check: thread.id is "channel:user_id", match against the channel's allowlist
+    const [channel, userId] = thread.id.split(":");
+    const allowed = this.#allowlists[channel];
+    if (allowed && !allowed.has(userId)) return;
+
     await thread.subscribe();
     await thread.startTyping();
     const fetched = await thread.adapter.fetchMessages(thread.id, { limit: 20 });

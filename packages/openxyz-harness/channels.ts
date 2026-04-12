@@ -1,8 +1,14 @@
 import { join } from "node:path";
 
-export async function scanChannels(cwd: string): Promise<Record<string, unknown>> {
+export interface ChannelScan {
+  adapters: Record<string, unknown>;
+  allowlists: Record<string, Set<string>>;
+}
+
+export async function scanChannels(cwd: string): Promise<ChannelScan> {
   const glob = new Bun.Glob("channels/*.ts");
-  const out: Record<string, unknown> = {};
+  const adapters: Record<string, unknown> = {};
+  const allowlists: Record<string, Set<string>> = {};
 
   for await (const rel of glob.scan({ cwd })) {
     const file = rel.split("/").pop()!;
@@ -13,8 +19,11 @@ export async function scanChannels(cwd: string): Promise<Record<string, unknown>
       console.warn(`[openxyz] channels/${file} has no default export, skipping`);
       continue;
     }
-    out[name] = mod.default;
+    adapters[name] = mod.default;
+    if (mod.allowlist) {
+      allowlists[name] = new Set(mod.allowlist);
+    }
   }
 
-  return out;
+  return { adapters, allowlists };
 }
