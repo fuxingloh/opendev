@@ -24,6 +24,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - [ ] Load `TOOLS.md` into system prompt — env-specific tool notes (`working/039`)
 - [ ] `BOOTSTRAP.md` first-run ritual — load, run, delete after completion (`working/039`)
 - [ ] `HEARTBEAT.md` periodic tasks — needs cron/scheduler mechanism, defer to v2 (`working/039`)
+- [ ] Validate agent frontmatter at scan time — error if tool/skill name doesn't exist (`working/038`)
+- [ ] VFS permissions for just-bash — sandboxed filesystem access per agent (`working/038`)
+- [ ] Agent model override — `model:` field in frontmatter, needs provider routing (`working/038`)
 
 ## What OpenXyz is
 
