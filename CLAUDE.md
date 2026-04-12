@@ -21,7 +21,6 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - [ ] Session persistence — swap `state-memory` for a persistent chat-sdk adapter (`working/037`)
 - [ ] Load `USER.md` into system prompt — user context (name, timezone, preferences) (`working/039`)
 - [ ] Load `MEMORY.md` into system prompt — curated long-term memory (`working/039`)
-- [ ] Load `TOOLS.md` into system prompt — env-specific tool notes (`working/039`)
 - [ ] `BOOTSTRAP.md` first-run ritual — load, run, delete after completion (`working/039`)
 - [ ] `HEARTBEAT.md` periodic tasks — needs cron/scheduler mechanism, defer to v2 (`working/039`)
 - [ ] Validate agent frontmatter at scan time — error if tool/skill name doesn't exist (`working/038`)
