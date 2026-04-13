@@ -1,22 +1,17 @@
 import { Chat, toAiMessages } from "chat";
 import type { Thread, Message } from "chat";
 import { createMemoryState } from "@chat-adapter/state-memory";
-import { scanChannels, Should, type ChannelEntry, type MessageContext } from "./channels";
+import { scanChannels, type ChannelEntry, type MessageContext, type ThreadState } from "./channels";
 import { AgentFactory } from "./agents/factory";
 
-// Compaction threshold: ~100K tokens. Char count / 4 is a rough token proxy.
-//  When recent history exceeds this, we compact older messages into a summary.
-const COMPACT_THRESHOLD_CHARS = 400_000;
-// Number of recent messages to preserve as-is when compacting.
-const COMPACT_TAIL_SIZE = 4;
-
-interface Summary {
-  summary: string;
-  upToMessageId: string;
-}
-
-interface ThreadState {
-  summary?: Summary;
+/**
+ * Provider error messages aren't typed — detect context-overflow by regex on
+ * the error text. Matches OpenAI ("context_length_exceeded", "maximum context
+ * length"), Anthropic ("prompt is too long"), and generic phrasings.
+ */
+function isContextOverflow(err: unknown): boolean {
+  const msg = (err instanceof Error ? err.message : String(err)).toLowerCase();
+  return /context[_ ]?(length|window)|token limit|prompt is too long|exceeds?.*context|too many tokens/.test(msg);
 }
 
 export class OpenXyzHarness {
@@ -57,7 +52,7 @@ export class OpenXyzHarness {
       this.#reply({ thread, message, channel }).catch((err) => console.error("[openxyz] handler error", err));
     });
 
-    chat.onSubscribedMessage((thread, message, channel) => {
+    chat.onSubscribedMessage((thread, message) => {
       this.#reply({ thread, message }).catch((err) => console.error("[openxyz] handler error", err));
     });
 
@@ -67,94 +62,108 @@ export class OpenXyzHarness {
   }
 
   async #reply(ctx: MessageContext): Promise<void> {
-    const { thread } = ctx;
-    const [id] = thread.id.split(":") as [string];
-    const cfg = this.#channels[id];
-    if (!cfg) return;
-
-    const decision = cfg.should ? await cfg.should(ctx) : Should.respond;
-    if (decision === Should.skip) return;
-    // TODO: subscribe() is idempotent but called on every reply — redundant after first contact.
-    await thread.subscribe();
-    if (decision === Should.listen) return;
-
-    const agent = await this.agentFactory.create(cfg.agent);
-
-    await thread.startTyping();
-    const fetched = await thread.adapter.fetchMessages(thread.id, { limit: 100 });
-
-    // Drop messages already folded into the summary
-    const state = ((await thread.state) ?? {}) as ThreadState;
-    const entry = state.summary;
-    let recent = entry ? fetched.messages.filter((m) => m.id > entry.upToMessageId) : fetched.messages;
-
-    // Check if we need to compact before the agent call
-    let summary = entry;
-    if (this.#estimateChars(recent) > COMPACT_THRESHOLD_CHARS) {
-      summary = await this.#compact(thread, recent, entry);
-      recent = recent.slice(-COMPACT_TAIL_SIZE);
+    const thread = ctx.thread;
+    const cfg = this.#channels[thread.adapter.name];
+    if (!cfg) {
+      throw new Error(`[openxyz] no channel config found for adapter "${thread.adapter.name}"`);
     }
 
-    const history = await toAiMessages(recent);
+    if (cfg.shouldRespond && !(await cfg.shouldRespond(ctx))) return;
+    // TODO: subscribe() is idempotent but called on every reply — redundant after first contact.
+    await thread.subscribe();
+
+    const agent = await this.agentFactory.create(cfg.agent);
+    await thread.startTyping();
+
+    let { summary, recent } = await this.#loadContext(thread);
+
     const env = {
       role: "system" as const,
       content: `Current date: ${new Date().toISOString().split("T")[0]}`,
     };
-    const summaryMsg = summary
-      ? {
-          role: "system" as const,
-          content: `<previous_conversation_summary>\n${summary.summary}\n</previous_conversation_summary>`,
-        }
-      : null;
+    const runStream = async () => {
+      const history = await toAiMessages(recent);
+      const summaryMsg = summary?.text
+        ? {
+            role: "system" as const,
+            content: `<previous_conversation_summary>\n${summary.text}\n</previous_conversation_summary>`,
+          }
+        : null;
+      const prompt = summaryMsg ? [env, summaryMsg, ...history] : [env, ...history];
+      const result = await agent.stream({ prompt });
+      await thread.post(result.fullStream);
+    };
 
-    const prompt = summaryMsg ? [env, summaryMsg, ...history] : [env, ...history];
-    const result = await agent.stream({ prompt });
-    await thread.post(result.fullStream);
+    try {
+      await runStream();
+    } catch (err) {
+      if (!isContextOverflow(err)) throw err;
+      // Reactive fallback: proactive threshold missed (reasoning tokens, tool-output
+      // growth, provider overhead). Force-compact what we have and retry once. A
+      // second overflow bubbles to the handler's catch.
+      console.warn("[openxyz] context overflow — forcing reactive compaction");
+      summary = await this.#compact(thread);
+      ({ recent } = await this.#loadContext(thread));
+      await runStream();
+    }
   }
 
   /**
-   * Invoke the compaction agent to summarize older messages, keeping the last few
-   * as tail. Merges with any prior summary so context isn't lost across compactions.
+   * Invoke the compaction agent on a thread's current history. Self-contained:
+   * reads prior summary + recent messages from thread state/platform, merges with
+   * the prior summary (so context isn't lost across compactions), writes the new
+   * summary back. Posts a "Compacting..." placeholder, deleted on success so the
+   * user sees progress even if the process dies mid-compaction.
    */
-  async #compact(thread: Thread, recent: Message[], prior?: Summary): Promise<Summary> {
-    const toCompact = recent.slice(0, -COMPACT_TAIL_SIZE);
-    if (toCompact.length === 0 || !toCompact[toCompact.length - 1])
-      return (
-        prior ?? {
-          summary: "",
-          upToMessageId: "",
-        }
-      );
+  async #compact(thread: Thread<ThreadState>) {
+    const { summary: prior, recent } = await this.#loadContext(thread);
+    const lastMessage = recent[recent.length - 1];
+    if (!lastMessage) {
+      return;
+    }
 
-    // User-visible progress marker — edited to "Compacted" on success so the user
-    // sees progress even if the process dies mid-compaction.
     const placeholder = await thread.post("Compacting...");
-
     const compactor = await this.agentFactory.create("compact", { delegate: false });
     const history = await toAiMessages(toCompact);
     const prompt = prior
       ? [
           {
             role: "system" as const,
-            content: `<previous_summary>\n${prior.summary}\n</previous_summary>\n\nMerge the previous summary above with the new messages below into a single updated summary.`,
+            content: `<previous_summary>\n${prior.text}\n</previous_summary>\n\nMerge the previous summary above with the new messages below into a single updated summary.`,
           },
           ...history,
         ]
       : history;
 
     const result = await compactor.generate({ prompt });
-    const summary: Summary = {
-      summary: result.text,
-      upToMessageId: toCompact[toCompact.length - 1]!.id,
+    const summary = {
+      text: result.text,
+      upToMessageId: lastMessage.id,
     };
-    await thread.setState({ summary } satisfies ThreadState);
-    await placeholder.edit("Compacted");
+    await thread.setState({ summary: summary });
+    await placeholder.delete();
     return summary;
   }
 
-  /** Rough token estimate: ~4 chars per token. */
-  #estimateChars(messages: Message[]): number {
-    return messages.reduce((n, m) => n + m.text.length, 0);
+  /**
+   * Load thread state + recent messages (newest first via `thread.messages`, cropped
+   * at the summary boundary). Common to `#reply` and `#compact`; prompt assembly
+   * diverges from there.
+   */
+  async #loadContext(thread: Thread<ThreadState>) {
+    const state = (await thread.state) ?? {};
+    const summary = state.summary;
+    const recent: Message[] = [];
+    for await (const msg of thread.messages) {
+      if (summary && msg.id <= summary.upToMessageId) break;
+      recent.unshift(msg);
+      // Collect 100 messages (only) need a better design later on.
+      // Cap on how far back we walk thread.messages when searching for the summary
+      // boundary. Beyond this, auto-compaction (periodic refresh, memory module) is the
+      // better mechanism — see working/054.
+      if (recent.length >= 100) break;
+    }
+    return { summary, recent };
   }
 
   async stop(): Promise<void> {
