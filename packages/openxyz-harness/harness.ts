@@ -43,6 +43,12 @@ export class OpenXyzHarness {
       this.#reply({ thread, message, channel }).catch((err) => console.error("[openxyz] handler error", err));
     });
 
+    // First @-mention in an unsubscribed (typically group) thread — subscribes and replies.
+    // Follow-up messages in the same thread flow through onSubscribedMessage (working/050).
+    chat.onNewMention((thread, message) => {
+      this.#reply({ thread, message }).catch((err) => console.error("[openxyz] handler error", err));
+    });
+
     chat.onSubscribedMessage((thread, message) => {
       this.#reply({ thread, message }).catch((err) => console.error("[openxyz] handler error", err));
     });
