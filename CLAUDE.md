@@ -8,7 +8,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - [x] Load agents from `agents/*.md` in templates — frontmatter config + body as system prompt (`working/034`)
 - [x] Implement `delegate` tool for spawning subagents with restricted tools (`working/038`)
 - [ ] Add LLM prompt caching (`applyCaching` on system/user messages) — free perf win (`working/032`)
-- [ ] File upstream issue on vercel/chat for Telegram MarkdownV2 entity escaping
+- [ ] File upstream issue on vercel/chat for Telegram MarkdownV2 entity escaping (`working/043`)
 - [ ] End-to-end test: `cd templates/openxyz-janitor && bun start` with real Telegram bot
 - [ ] `mode: "polling"` default for `openxyz/channels.telegram()` — stale webhooks cause silent failures
 - [ ] Model configurability — `big-pickle` hardcoded in `agents/main.ts`, should be template config
@@ -61,12 +61,18 @@ An earlier iteration experimented with a hard fork of opencode. The current dire
 
 ## Reference checkouts (outside this repo)
 
-Two sibling projects are referenced for learning and examples. They are **not dependencies** — do not import from them.
+Sibling projects referenced for learning. **Not dependencies** — do not import from them. Use `../project-name` paths, never absolute paths.
 
-- **opencode** — `../opencode`. When the user says "look at opencode", look here. Details and what's worth referencing: `working/020`.
-- **openclaw** — `../openclaw`. When the user says "look at openclaw", look here. Details and what's worth referencing: `working/021`.
+| Project          | Path              | What it is                                                | Notes         |
+| ---------------- | ----------------- | --------------------------------------------------------- | ------------- |
+| **opencode**     | `../opencode`     | TypeScript coding agent                                   | `working/020` |
+| **openclaw**     | `../openclaw`     | Earlier iteration                                         | `working/021` |
+| **hermes-agent** | `../hermes-agent` | Python production agent (Nous Research)                   | `working/044` |
+| **claw-code**    | `../claw-code`    | Rust Claude Code alternative                              | `working/045` |
+| **chat**         | `../chat`         | The chat-sdk we depend on (structural map)                | `working/046` |
+| **aixyz**        | `../aixyz`        | User's previous Bun-based project (stylistic inspiration) | `working/047` |
 
-Learn patterns from both; don't port code wholesale. Both predate the current Bun + AI SDK + chat-sdk direction, so their stack choices are informational only.
+Learn patterns from each; don't port code wholesale. Different stacks (Python, Rust, TS), so code doesn't transfer — architecture, patterns, naming conventions do.
 
 ## Monorepo layout
 
@@ -136,7 +142,7 @@ my-template/
 | 12  | Build on Vercel AI SDK, not fork opencode                                                                          | `working/012`                   |
 | 13  | All channels go through `chat` + `@chat-adapter/*` (no direct platform SDKs)                                       | `working/022`                   |
 | 14  | Reference opencode at `../opencode` (not a dependency)                                                             | `working/020`                   |
-| 15  | Reference openclaw at `../../openclaw` (not a dependency)                                                          | `working/021`                   |
+| 15  | Reference openclaw at `../openclaw` (not a dependency)                                                             | `working/021`                   |
 | 16  | Engine in `@openxyz/harness`; `openxyz` is the CLI + facade templates import from                                  | (this file)                     |
 | 17  | First-party wrappers for popular channels live at `openxyz/channels`                                               | `working/023`                   |
 | 18  | Log every direction/tradeoff/decision to `working/NNN-*.md` proactively                                            | (working style)                 |
@@ -248,6 +254,10 @@ Read these first for deep context on any topic.
 
 - **020** — opencode reference path and what's worth reading there
 - **021** — openclaw reference path and what's worth reading there
+- **044** — hermes-agent (Python production agent, SQLite state, toolsets, multi-platform gateway)
+- **045** — claw-code (Rust, JSONL persistence, two-layer permissions, hook injection)
+- **046** — chat-sdk structural map (package layout, types, concurrency model, Telegram internals)
+- **047** — aixyz (Bun + Turborepo stylistic inspiration, plugin lifecycle, Zod config)
 
 ### Patterns to learn from
 
