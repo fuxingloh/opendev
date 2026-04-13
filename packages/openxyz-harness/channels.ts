@@ -1,32 +1,18 @@
 import { join } from "node:path";
 import type { Thread, Message, Channel } from "chat";
 
-/**
- * Return value of a channel's `should()` hook. Decides what the harness does
- * with an incoming message.
- *
- * - `Should.respond` — subscribe + run the agent reply flow
- * - `Should.listen` — subscribe so the thread stays warm, but skip the reply
- * - `Should.skip` — ignore entirely (no subscribe, no reply)
- */
-export enum Should {
-  respond = "respond",
-  listen = "listen",
-  skip = "skip",
-}
-
 export interface MessageContext<TState = Record<string, unknown>> {
   thread: Thread<TState>;
   message: Message;
   channel?: Channel<TState>;
 }
 
-export type ShouldFn = (ctx: MessageContext) => Should | Promise<Should>;
+export type ShouldRespondFn = (ctx: MessageContext) => boolean | Promise<boolean>;
 
 export interface ChannelEntry {
   adapter: unknown;
   agent: string;
-  should: ShouldFn | undefined;
+  shouldRespond: ShouldRespondFn | undefined;
 }
 
 export async function scanChannels(cwd: string): Promise<Record<string, ChannelEntry>> {
@@ -44,7 +30,7 @@ export async function scanChannels(cwd: string): Promise<Record<string, ChannelE
     channels[name] = {
       adapter: mod.default,
       agent: mod.agent ?? "general",
-      should: typeof mod.should === "function" ? (mod.should as ShouldFn) : undefined,
+      shouldRespond: typeof mod.shouldRespond === "function" ? (mod.shouldRespond as ShouldRespondFn) : undefined,
     };
   }
 
