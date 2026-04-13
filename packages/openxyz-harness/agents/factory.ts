@@ -1,4 +1,4 @@
-import { ToolLoopAgent, tool } from "ai";
+import { ToolLoopAgent, tool, stepCountIs } from "ai";
 import type { Tool } from "ai";
 import { basename, join } from "node:path";
 import { existsSync } from "node:fs";
@@ -14,13 +14,14 @@ import basePrompt from "./prompts/openxyz.md" with { type: "text" };
 const AgentSchema = z.object({
   name: z.string(),
   description: z.string(),
-  prompt: z.string(),
+  skills: z.array(z.string()).optional(),
   tools: z
     .record(z.string(), z.union([z.literal(true), z.literal(false), z.record(z.string(), z.unknown())]))
     .optional(),
-  skills: z.array(z.string()).optional(),
   filesystem: FilesystemConfigSchema,
+  prompt: z.string(),
   // TODO: model override — `model:` field in frontmatter, needs provider routing
+  //   definitely need model object config, with optionality, instead of a single model
 });
 
 export type AgentDef = z.infer<typeof AgentSchema>;
@@ -126,10 +127,29 @@ export class AgentFactory {
     const skills = this.#filterSkills(def);
     const instructions = this.#buildInstructions(def, tools, skills);
 
+    // Step budget: hardcoded 100 as runaway safety net.
+    //  Final step forces text-only response so the agent summarizes rather than cutting off.
+    const maxSteps = 100;
+
     return new ToolLoopAgent({
       model,
       instructions: { role: "system" as const, content: instructions },
       tools,
+      stopWhen: stepCountIs(maxSteps),
+      prepareStep: ({ stepNumber }) => {
+        if (stepNumber >= maxSteps - 1) {
+          return {
+            toolChoice: "none",
+            system: [
+              {
+                role: "system",
+                content: `You've reached the maximum step budget (${maxSteps}). Summarize what you did and respond to the user without calling any more tools.`,
+              },
+            ],
+          };
+        }
+        return undefined;
+      },
     });
   }
 

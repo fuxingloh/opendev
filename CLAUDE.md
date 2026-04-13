@@ -63,14 +63,15 @@ An earlier iteration experimented with a hard fork of opencode. The current dire
 
 Sibling projects referenced for learning. **Not dependencies** — do not import from them. Use `../project-name` paths, never absolute paths.
 
-| Project          | Path              | What it is                                                | Notes         |
-| ---------------- | ----------------- | --------------------------------------------------------- | ------------- |
-| **opencode**     | `../opencode`     | TypeScript coding agent                                   | `working/020` |
-| **openclaw**     | `../openclaw`     | Earlier iteration                                         | `working/021` |
-| **hermes-agent** | `../hermes-agent` | Python production agent (Nous Research)                   | `working/044` |
-| **claw-code**    | `../claw-code`    | Rust Claude Code alternative                              | `working/045` |
-| **chat**         | `../chat`         | The chat-sdk we depend on (structural map)                | `working/046` |
-| **aixyz**        | `../aixyz`        | User's previous Bun-based project (stylistic inspiration) | `working/047` |
+| Project          | Path              | What it is                                                                            | Notes         |
+| ---------------- | ----------------- | ------------------------------------------------------------------------------------- | ------------- |
+| **opencode**     | `../opencode`     | TypeScript coding agent                                                               | `working/020` |
+| **openclaw**     | `../openclaw`     | Earlier iteration                                                                     | `working/021` |
+| **hermes-agent** | `../hermes-agent` | Python production agent (Nous Research)                                               | `working/044` |
+| **claw-code**    | `../claw-code`    | Rust Claude Code alternative                                                          | `working/045` |
+| **chat**         | `../chat`         | The chat-sdk we depend on (structural map)                                            | `working/046` |
+| **aixyz**        | `../aixyz`        | User's previous Bun-based project (stylistic inspiration)                             | `working/047` |
+| **ai**           | `../ai`           | The `ai` SDK package we depend on — source for `ToolLoopAgent`, stop conditions, etc. | `working/048` |
 
 Learn patterns from each; don't port code wholesale. Different stacks (Python, Rust, TS), so code doesn't transfer — architecture, patterns, naming conventions do.
 
@@ -258,6 +259,7 @@ Read these first for deep context on any topic.
 - **045** — claw-code (Rust, JSONL persistence, two-layer permissions, hook injection)
 - **046** — chat-sdk structural map (package layout, types, concurrency model, Telegram internals)
 - **047** — aixyz (Bun + Turborepo stylistic inspiration, plugin lifecycle, Zod config)
+- **048** — AI SDK loop control (stopWhen, prepareStep, toolChoice — native primitives for step limits and forced summarization)
 
 ### Patterns to learn from
 
