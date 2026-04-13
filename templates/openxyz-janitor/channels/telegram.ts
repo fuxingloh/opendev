@@ -1,4 +1,4 @@
-import { telegram, Should, type MessageContext } from "openxyz/channels/telegram";
+import { telegram, type MessageContext } from "openxyz/channels/telegram";
 import { readEnv, z } from "openxyz/env";
 
 export default telegram({
@@ -7,13 +7,11 @@ export default telegram({
   }),
 });
 
-const allowlist = new Set(
-  readEnv("TELEGRAM_ALLOWLIST", {
-    description: "Comma-separated Telegram user IDs allowed to interact",
-    schema: z.string().transform((s) => s.split(",").map((v) => v.trim())),
-  }),
-);
+const allowlist = readEnv("TELEGRAM_ALLOWLIST", {
+  description: "Comma-separated Telegram user IDs allowed to interact",
+  schema: z.string().transform((s) => new Set(s.split(",").map((v) => v.trim()))),
+});
 
-export function should({ message }: MessageContext): Should {
-  return allowlist.has(message.author.userId) ? Should.respond : Should.skip;
+export function shouldRespond({ message }: MessageContext): boolean {
+  return allowlist.has(message.author.userId);
 }
