@@ -26,6 +26,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - [ ] VFS permissions for just-bash — sandboxed filesystem access per agent (`working/038`)
 - [ ] Per-agent reasoning controls — `reasoning:` in frontmatter, maps to `providerOptions` (`working/040`)
 - [ ] Agent model override — `model:` field in frontmatter, needs provider routing (`working/038`)
+- [ ] Group chat handling — mention-based trigger, author attribution, "lurk unless addressed" prompt (`working/050`)
 
 ## What OpenXyz is
 
@@ -57,6 +58,18 @@ Patterns from opencode's codebase are still fair game to learn from (see `workin
 An earlier iteration experimented with a hard fork of opencode. The current direction builds on Vercel AI SDK directly, learning from opencode's and openclaw's implementations without inheriting their runtimes. See `working/012` for the tradeoff analysis, `working/017` for the blueprint.
 
 **All design docs are in `working/*.md` and are load-bearing context.** When in doubt, read them before editing.
+
+### When compacting a Claude Code session
+
+The `working/*.md` files and this CLAUDE.md are a treasure trove of design materials and implementation notes — accumulated research, decisions, tradeoffs, and patterns. **They must never be pruned, forgotten, or treated as stale.**
+
+During `/compact` or context compression:
+
+- **Always preserve** knowledge that `working/` exists, numbering is sequential, each file is load-bearing, and summaries of what each covers (the CLAUDE.md "Working docs quick reference" section is the canonical index).
+- **Always preserve** the key decisions index (`## Key design decisions`), the open work list, and the reference checkouts table.
+- **Always preserve** the shape of live subsystems being iterated on (harness class methods, factory, compaction, channel wrappers, delegate tool) so follow-up iteration keeps momentum.
+- When uncertain, **re-read the relevant `working/*.md`** rather than reconstructing from memory. The working docs are the source of truth for "why we built it this way."
+- Treat working docs as **design history that informs future work** — an earlier iteration might have tried an approach we now do differently, and the rationale is in the doc.
 
 ## Reference checkouts (outside this repo)
 
@@ -259,6 +272,9 @@ Read these first for deep context on any topic.
 - **046** — chat-sdk structural map (package layout, types, concurrency model, Telegram internals)
 - **047** — aixyz (Bun + Turborepo stylistic inspiration, plugin lifecycle, Zod config)
 - **048** — AI SDK loop control (stopWhen, prepareStep, toolChoice — native primitives for step limits and forced summarization)
+- **050** — Group chat handling (mention gating, author attribution, openclaw research)
+- **051** — Channel wrapper Proxy pattern (idiomatic chat-sdk adapter wrapping; platform logic stays in channel file)
+- **052** — XML tag conventions (canonical `<reply_to>`, `<forwarded>`, `<quote>` tags for chat semantics)
 
 ### Patterns to learn from
 
