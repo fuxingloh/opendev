@@ -71,22 +71,22 @@ export class OpenXyzHarness {
     await thread.subscribe();
     await thread.startTyping();
     const fetched = await thread.adapter.fetchMessages(thread.id, { limit: 20 });
+    // Inject reply context — chat-sdk flattens messages and drops reply-to relationships.
+    //  Telegram surfaces it via message.raw.reply_to_message. Other platforms TBD.
+    for (const msg of fetched.messages) {
+      const raw = msg.raw as { reply_to_message?: { text?: string; from?: { is_bot?: boolean } } } | undefined;
+      const parent = raw?.reply_to_message?.text;
+      if (!parent) continue;
+      const author = raw?.reply_to_message?.from?.is_bot ? "assistant" : "user";
+      msg.text = `<reply_to author="${author}">\n${parent}\n</reply_to>\n\n${msg.text}`;
+    }
     const history = await toAiMessages(fetched.messages);
     const env = {
       role: "system" as const,
       content: `Current date: ${new Date().toISOString().split("T")[0]}`,
     };
     const result = await agent.stream({ prompt: [env, ...history] });
-    try {
-      await thread.post(result.fullStream);
-    } catch {
-      // TODO: chat-sdk's Telegram adapter doesn't escape MarkdownV2 entities properly.
-      let text = "";
-      for await (const chunk of result.textStream) {
-        text += chunk;
-      }
-      await thread.post(text);
-    }
+    await thread.post(result.fullStream);
   }
 
   async stop(): Promise<void> {
