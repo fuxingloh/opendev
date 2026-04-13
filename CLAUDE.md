@@ -26,6 +26,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - [ ] VFS permissions for just-bash — sandboxed filesystem access per agent (`working/038`)
 - [ ] Agent model + reasoning config — nested `model: { id, reasoning }` in frontmatter, shorthand string fallback, per-provider mapping (`working/053`)
 - [ ] Group chat handling — mention-based trigger, author attribution, "lurk unless addressed" prompt (`working/050`)
+- [ ] File chat-sdk upstream wishlist — XML semantic tagging, auto-compaction, tool/trace file handling (`working/055`)
 
 ## What OpenXyz is
 
@@ -276,6 +277,7 @@ Read these first for deep context on any topic.
 - **052** — XML tag conventions (canonical `<reply_to>`, `<forwarded>`, `<quote>` tags for chat semantics)
 - **053** — Agent model + reasoning config (nested `model: { id, reasoning }` frontmatter design, per-provider mapping for low/medium/high)
 - **054** — Auto-compaction refresh + memory module (deferred — why 1000-message cap is enough today, what to build when summary drift becomes real)
+- **055** — chat-sdk wishlist (upstream wants: XML semantic tagging, auto-compaction, tool/trace file handling)
 
 ### Patterns to learn from
 
