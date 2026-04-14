@@ -25,7 +25,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - [ ] Validate agent frontmatter at scan time — error if tool/skill name doesn't exist (`working/038`)
 - [ ] VFS permissions for just-bash — sandboxed filesystem access per agent (`working/038`)
 - [ ] Agent model + reasoning config — nested `model: { id, reasoning }` in frontmatter, shorthand string fallback, per-provider mapping (`working/053`)
-- [ ] Group chat handling — mention-based trigger, author attribution, "lurk unless addressed" prompt (`working/050`)
+- [x] Group chat handling — mention-based trigger, author attribution, "lurk unless addressed" prompt (`working/050`)
 - [ ] File chat-sdk upstream wishlist — XML semantic tagging, auto-compaction, tool/trace file handling (`working/055`)
 
 ## What OpenXyz is
