@@ -84,6 +84,9 @@ Sibling projects referenced for learning. **Not dependencies** — do not import
 | **chat**         | `../chat`         | The chat-sdk we depend on (structural map)                                            | `working/046` |
 | **aixyz**        | `../aixyz`        | User's previous Bun-based project (stylistic inspiration)                             | `working/047` |
 | **ai**           | `../ai`           | The `ai` SDK package we depend on — source for `ToolLoopAgent`, stop conditions, etc. | `working/048` |
+| **lobu**         | `../lobu`         | Multi-tenant chat-sdk gateway for OpenClaw agents — same chat-sdk wiring as us        | `working/056` |
+| **open-agents**  | `../open-agents`  | Vercel Labs reference: AI SDK v6 + Workflow SDK + Postgres coding agent               | `working/057` |
+| **codex**        | `../codex`        | OpenAI Rust coding agent (CLI-only) — patterns by analogy, language gap               | `working/058` |
 
 Learn patterns from each; don't port code wholesale. Different stacks (Python, Rust, TS), so code doesn't transfer — architecture, patterns, naming conventions do.
 
@@ -278,6 +281,9 @@ Read these first for deep context on any topic.
 - **053** — Agent model + reasoning config (nested `model: { id, reasoning }` frontmatter design, per-provider mapping for low/medium/high)
 - **054** — Auto-compaction refresh + memory module (deferred — why 1000-message cap is enough today, what to build when summary drift becomes real)
 - **055** — chat-sdk wishlist (upstream wants: XML semantic tagging, auto-compaction, tool/trace file handling)
+- **056** — lobu (multi-tenant chat-sdk gateway, same handler wiring; adapter factory + modular instruction providers worth borrowing)
+- **057** — open-agents (Vercel Labs AI SDK v6 + Workflow SDK; tool implementations + cache-control + model-family dispatch worth referencing)
+- **058** — codex (OpenAI Rust agent; typed tool registry pattern by analogy, otherwise lowest priority)
 
 ### Patterns to learn from
 
