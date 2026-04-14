@@ -59,6 +59,7 @@ export class OpenXyz {
   }
 
   async onMessage(thread: ChatThread, message: ChatMessage): Promise<void> {
+    await thread.subscribe();
     const channel = this.#channels[thread.adapter.name];
     if (!channel) {
       throw new Error(`[openxyz] received message for adapter "${thread.adapter.name}" but no channel config found`);

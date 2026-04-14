@@ -59,8 +59,11 @@ export function telegram(opts: TelegramConfig): ChannelFile<TelegramRaw> {
       // Telegram "threads" are forum topics — a supergroup splits into many.
       // Fetch at the channel level so context spans every topic in the chat.
       // Cache-backed: only returns messages the adapter has seen this session.
-      const { messages } = await thread.channel.adapter.fetchChannelMessages!(thread.channel.id, { limit: 100 });
-      console.log(`[telegram] fetched ${messages.length} messages for context in channel ${thread.channel.id}`); // debug
+      // const { messages } = await thread.channel.adapter.fetchChannelMessages!(thread.channel.id, { limit: 100 });
+      await thread.refresh();
+      const messages = thread.recentMessages;
+      // thread.channel.messages;
+      console.log(`[telegram] context fetched ${messages.length} messages for thread ${thread.id}`);
       return await toAiMessages(messages, {
         includeNames: !thread.isDM,
         transformMessage: (aiMsg, src) => annotate(aiMsg, src, adapter.botUserId),
