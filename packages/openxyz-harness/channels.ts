@@ -1,43 +1,58 @@
 import { join } from "node:path";
-import type { Thread, Message, Channel } from "chat";
+import type { Thread as ChatThread, Message as ChatMessage, Adapter as ChatAdapter } from "chat";
 
-export type ThreadState = {
-  summary?: {
-    text: string;
-    upToMessageId: string;
-  };
+export type Summary = {
+  text: string;
+  upToMessageId: string;
 };
 
-export interface MessageContext {
-  thread: Thread<ThreadState>;
-  message: Message;
-  channel?: Channel;
-}
+export type Thread = ChatThread<{
+  summary?: Summary;
+}>;
 
-export type ShouldRespondFn = (ctx: MessageContext) => boolean | Promise<boolean>;
+export type Message = ChatMessage;
 
-export interface ChannelEntry {
-  adapter: unknown;
+export type FilterFn = (thread: Thread, message: Message) => boolean | Promise<boolean>;
+
+/**
+ * Representation of a channel file within the OpenXyz harness.
+ */
+export type ChannelFile = {
   agent: string;
-  shouldRespond: ShouldRespondFn | undefined;
-}
+  adapter: ChatAdapter;
+  filter: FilterFn;
+};
 
-export async function scanChannels(cwd: string): Promise<Record<string, ChannelEntry>> {
+export async function scanChannels(cwd: string): Promise<Record<string, ChannelFile>> {
+  // TODO(agent): support .js and .ts
   const glob = new Bun.Glob("channels/[!_]*.ts");
-  const channels: Record<string, ChannelEntry> = {};
+  const channels: Record<string, ChannelFile> = {};
 
-  for await (const rel of glob.scan({ cwd })) {
-    const file = rel.split("/").pop()!;
+  for await (const path of glob.scan({ cwd })) {
+    const file = path.split("/").pop()!;
     const name = file.replace(/\.ts$/, "");
-    const mod = await import(join(cwd, rel));
+    const mod = await import(join(cwd, path));
+
     if (!mod.default) {
       console.warn(`[openxyz] channels/${file} has no default export, skipping`);
       continue;
     }
+
+    let filter: FilterFn = () => true;
+    if (mod.filter) {
+      if (typeof mod.filter !== "function") {
+        throw new Error(`[openxyz] channels/${file} filter export is not a function`);
+      }
+
+      filter = mod.filter as FilterFn;
+    } else {
+      console.warn(`[openxyz] channels/${file} has no filter export, using default filter that always returns true`);
+    }
+
     channels[name] = {
-      adapter: mod.default,
       agent: mod.agent ?? "general",
-      shouldRespond: typeof mod.shouldRespond === "function" ? (mod.shouldRespond as ShouldRespondFn) : undefined,
+      adapter: mod.default,
+      filter,
     };
   }
 
