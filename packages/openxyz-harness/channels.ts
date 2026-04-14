@@ -12,7 +12,14 @@ export type Thread = ChatThread<{
 
 export type Message = ChatMessage;
 
-export type FilterFn = (thread: Thread, message: Message) => boolean | Promise<boolean>;
+export type Action = {
+  reply: boolean;
+  reaction?: string;
+};
+
+export type Respond = boolean | Promise<boolean> | Action | Promise<Action>;
+
+export type HandleFn = (thread: Thread, message: Message) => Respond;
 
 /**
  * Representation of a channel file within the OpenXyz harness.
@@ -20,7 +27,7 @@ export type FilterFn = (thread: Thread, message: Message) => boolean | Promise<b
 export type ChannelFile = {
   agent: string;
   adapter: ChatAdapter;
-  filter: FilterFn;
+  handle: (thread: Thread, message: Message) => Promise<Action>;
 };
 
 export async function scanChannels(cwd: string): Promise<Record<string, ChannelFile>> {
@@ -38,23 +45,59 @@ export async function scanChannels(cwd: string): Promise<Record<string, ChannelF
       continue;
     }
 
-    let filter: FilterFn = () => true;
-    if (mod.filter) {
-      if (typeof mod.filter !== "function") {
-        throw new Error(`[openxyz] channels/${file} filter export is not a function`);
-      }
-
-      filter = mod.filter as FilterFn;
-    } else {
-      console.warn(`[openxyz] channels/${file} has no filter export, using default filter that always returns true`);
-    }
-
     channels[name] = {
       agent: mod.agent ?? "general",
       adapter: mod.default,
-      filter,
+      handle: newHandler(mod.handle, file),
     };
   }
 
   return channels;
+}
+
+function newHandler(handle: HandleFn, file: string): (thread: Thread, message: Message) => Promise<Action> {
+  if (typeof handle !== "function") {
+    throw new Error(`[openxyz] channels/${file} handle export is not a function`);
+  }
+
+  if (!handle) {
+    console.warn(`[openxyz] channels/${file} has no handle export, using default handle that always returns true`);
+    return async (thread: Thread, message: Message) => {
+      return defaultAction(thread, message);
+    };
+  }
+
+  return async (thread: Thread, message: Message): Promise<Action> => {
+    const respond = await handle(thread, message);
+    if (typeof respond !== "boolean") {
+      return respond;
+    }
+
+    if (respond) {
+      return defaultAction(thread, message);
+    }
+
+    return {
+      reply: false,
+    };
+  };
+}
+
+function defaultAction(thread: Thread, message: Message): Action {
+  if (thread.isDM) {
+    return {
+      reply: true,
+    };
+  }
+
+  if (message.isMention) {
+    return {
+      reply: true,
+      reaction: "👀",
+    };
+  }
+
+  return {
+    reply: false,
+  };
 }
