@@ -55,12 +55,6 @@ export function telegram(opts: TelegramConfig): ChannelFile<TelegramRaw> {
 
   return {
     adapter,
-    environment: async (thread: Thread, _message: Message<TelegramRaw>) => {
-      return [
-        `Current datetime: ${new Date().toISOString()}`,
-        thread.isDM ? `Telegram DM: ${thread.channel.name}` : `Telegram Group: ${thread.channel.name}`,
-      ];
-    },
     context: async (thread: Thread, _message: Message<TelegramRaw>) => {
       // Telegram "threads" are forum topics — a supergroup splits into many.
       // `thread.channel.messages` iterates newest-first across every topic,
@@ -76,11 +70,17 @@ export function telegram(opts: TelegramConfig): ChannelFile<TelegramRaw> {
         transformMessage: (aiMsg, src) => annotate(aiMsg, src, adapter.botUserId),
       });
     },
+    environment: async (thread: Thread, _message: Message<TelegramRaw>) => {
+      return [
+        `Current datetime: ${new Date().toISOString()}`,
+        thread.isDM ? `Telegram DM: ${thread.channel.name}` : `Telegram Group: ${thread.channel.name}`,
+      ];
+    },
     /**
      * Default reply if no `export function reply` is provided in the channel file.
      * Also used when `export function reply() { return true }`, true -> uses this.
      */
-    async reply(thread: Thread, message: Message<TelegramRaw>) {
+    reply: async (thread: Thread, message: Message<TelegramRaw>) => {
       if (thread.isDM) {
         return { agent: "general", typing: true };
       }
