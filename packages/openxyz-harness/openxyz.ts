@@ -1,8 +1,8 @@
 import { Chat } from "chat";
 import type { Thread as ChatThread, Message as ChatMessage } from "chat";
-import { createMemoryState } from "@chat-adapter/state-memory";
 import { scanChannelFiles, type ChannelFile } from "./channels";
 import { AgentFactory } from "./agents/factory";
+import { createState } from "./state";
 
 export class OpenXyz {
   readonly cwd: string;
@@ -16,7 +16,11 @@ export class OpenXyz {
   }
 
   async start(): Promise<void> {
-    const [, channels] = await Promise.all([this.agentFactory.init(), scanChannelFiles(this.cwd)]);
+    const [, channels, state] = await Promise.all([
+      this.agentFactory.init(),
+      scanChannelFiles(this.cwd),
+      createState(this.cwd),
+    ]);
     this.#channels = channels;
 
     if (Object.keys(channels).length === 0) {
@@ -25,7 +29,7 @@ export class OpenXyz {
 
     const chat = new Chat({
       adapters: Object.fromEntries(Object.entries(channels).map(([k, v]) => [k, v.adapter])) as Record<string, never>,
-      state: createMemoryState(),
+      state,
       userName: "openxyz",
       logger: "info",
       fallbackStreamingPlaceholderText: null,

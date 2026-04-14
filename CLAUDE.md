@@ -221,6 +221,19 @@ From `AGENTS.md`:
 - **snake_case** for Drizzle schema fields (no column name strings needed)
 - **Type inference over explicit annotations**
 
+### Comments: WHY, not WHAT
+
+Default to no comments. Write one only when the reader can't recover the reasoning from the code alone. Specifically:
+
+- **Framework/library contracts that aren't visible at the call site** — chat-sdk's tiered dispatch (`onDirectMessage` → `onSubscribedMessage` → `onNewMention` → `onNewMessage` with early returns), AI SDK's `stopWhen` semantics, Telegram's forum-topic thread IDs, prompt cache-control ordering. If the "why" lives in another repo, mention it.
+- **Non-obvious ordering, fan-out, or sequencing** — why we auto-`thread.subscribe()` inside `onNewMention`, why `environment` prepends to `context()` instead of merging, why a handler is fire-and-forget instead of awaited.
+- **Surprising upstream limits** — `thread.refresh()` caps at 50 (thread.ts:726); `fetchChannelMessages` is cache-backed on Telegram; chat-sdk's `isMention` is set by dispatcher, preserved if already truthy.
+- **Design doc cross-refs** — link `working/NNN` when a decision is logged. A reader should be able to jump from the code to the rationale in one hop.
+
+Never comment what the code already says. `// increment counter` above `i++` adds noise. `// Telegram's adapter.fetchChannelMessages is cache-backed — messages before process start won't appear` adds load-bearing context.
+
+When in doubt, ask: "could a future maintainer reconstruct this reasoning from a clean read of the code?" If yes, skip the comment. If no, write it — and keep it tight.
+
 ## Working style
 
 - Terse, direct responses — no preamble, **no emojis**

@@ -19,7 +19,9 @@ export class FilesystemTools {
     this.#home = `/home/${basename(cwd)}`;
     const permissions = typeof config === "string" ? { harness: config } : (config ?? {});
 
-    // TODO(?): IMPORTANT make sure .env, .gitignore, node_modules (maybe?) are not exposed to the agent
+    // TODO(?): IMPORTANT make sure .env, .gitignore, node_modules (maybe?) are not exposed to the agent-
+    //  OpenXyz Approved Plugins Hub?
+    //  Advanced users can just give "real Bash" access
     const harness =
       (permissions.harness ?? "read-write") === "read-write"
         ? new ReadWriteFs({ root: cwd })
