@@ -1,10 +1,10 @@
-import { OpenXyzHarness } from "@openxyz/harness/harness";
+import { OpenXyz } from "@openxyz/harness/openxyz";
 import { Command } from "commander";
 
 export default new Command("start").option("-p, --port <port>", "Port to listen on").action(action);
 
 async function action(): Promise<void> {
-  const openxyz = new OpenXyzHarness({ cwd: process.cwd() });
+  const openxyz = new OpenXyz({ cwd: process.cwd() });
   await openxyz.start();
   console.log("openxyz running. Ctrl-C to quit.");
 
