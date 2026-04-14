@@ -53,7 +53,7 @@ type TelegramForwardOrigin =
 export function telegram(opts: TelegramConfig): ChannelFile<TelegramRaw> {
   const adapter = createTelegramAdapter(opts);
 
-  // TODO(?): I'm thinking maybe we should split cotnext up
+  // TODO(?): I'm thinking maybe we should split context up
   //  - context     -> Messages to send over. (where to put summarization),
   //  maybe I want thread.recentMessages instead of thread.channel.messages?
   //  - environment -> Padded below messages
