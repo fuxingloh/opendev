@@ -9,6 +9,7 @@
     "bin",
     "tools.ts",
     "channels/*",
+    "backend.ts",
     "env.ts",
     "tsconfig.json"
   ],
