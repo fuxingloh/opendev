@@ -28,7 +28,8 @@ type TemplateFiles = {
   channels: { name: string; absPath: string }[];
   tools: { name: string; absPath: string }[];
   agents: { name: string; absPath: string }[];
-  skills: { absPath: string }[];
+  /** `absPath` = build-time import path; `vfsPath` = runtime `/home/openxyz/...` path. */
+  skills: { absPath: string; vfsPath: string }[];
   agentsMd?: string;
   /** Relative paths of every template file to pack into the VFS snapshot. */
   vfs: string[];
@@ -63,7 +64,7 @@ async function enumerateTemplateFiles(cwd: string): Promise<TemplateFiles> {
   }
   const skills: TemplateFiles["skills"] = [];
   for await (const rel of new Bun.Glob("skills/**/SKILL.md").scan({ cwd })) {
-    skills.push({ absPath: join(cwd, rel) });
+    skills.push({ absPath: join(cwd, rel), vfsPath: "/home/openxyz/" + rel });
   }
   const agentsMdPath = join(cwd, "AGENTS.md");
   const agentsMd = existsSync(agentsMdPath) ? agentsMdPath : undefined;
@@ -92,11 +93,10 @@ function generateEntrypoint(files: TemplateFiles): string {
   const imports: string[] = [];
   const body: string[] = [];
 
-  const openxyzImports = ["OpenXyz", "buildChannelFile"];
-  if (files.agents.length > 0) openxyzImports.push("parseAgent");
-  if (files.skills.length > 0) openxyzImports.push("parseSkill");
-  imports.push(`import { ${openxyzImports.join(", ")} } from "openxyz/openxyz";`);
-  imports.push(`import { createChatState } from "openxyz/databases";`);
+  const harnessImports = ["OpenXyz", "buildChannelFile", "createChatState"];
+  if (files.agents.length > 0) harnessImports.push("parseAgent");
+  if (files.skills.length > 0) harnessImports.push("parseSkill");
+  imports.push(`import { ${harnessImports.join(", ")} } from "openxyz/_harness";`);
 
   const channelEntries: string[] = [];
   files.channels.forEach((c, i) => {
@@ -125,7 +125,10 @@ function generateEntrypoint(files: TemplateFiles): string {
   files.skills.forEach((s, i) => {
     const id = `__skill${i}`;
     imports.push(`import ${id} from ${JSON.stringify(s.absPath)} with { type: "text" };`);
-    skillEntries.push(`  parseSkill(${JSON.stringify(s.absPath)}, ${id}),`);
+    // Location stored on the SkillInfo must be the runtime VFS path — the
+    // skill tool uses it to list sibling files from the in-memory fs at cold
+    // start, not the build machine's disk.
+    skillEntries.push(`  parseSkill(${JSON.stringify(s.vfsPath)}, ${id}),`);
   });
 
   let agentsMdId: string | undefined;
@@ -182,6 +185,7 @@ async function buildVercel(cwd: string): Promise<void> {
   mkdirSync(funcDir, { recursive: true });
 
   const homePlugin = inMemoryHomePlugin(cwd, files.vfs);
+  const harnessPlugin = virtualHarnessPlugin();
 
   const result = await Bun.build({
     entrypoints: [entrypoint],
@@ -194,7 +198,7 @@ async function buildVercel(cwd: string): Promise<void> {
       "process.env.NODE_ENV": JSON.stringify("production"),
       "process.env.OPENXYZ_BACKEND": JSON.stringify("vercel"),
     },
-    plugins: [homePlugin],
+    plugins: [homePlugin, harnessPlugin],
   });
 
   if (!result.success) {
@@ -248,9 +252,43 @@ async function buildVercel(cwd: string): Promise<void> {
   console.log(`  ${relative(cwd, resolve(funcDir, "server.js"))}`);
   console.log(`  ${relative(cwd, staticDir)}/`);
   for (const f of copied) console.log(`  ${relative(cwd, resolve(funcDir, f))}`);
-  console.log("");
-  console.log("Deploy with: vercel deploy --prebuilt");
-  console.log("Point Telegram setWebhook at: https://<your-deploy>/webhooks/telegram");
+}
+
+/**
+ * Bun plugin that materializes `openxyz/_harness` — a virtual module that
+ * only exists during `openxyz build`. It re-exports the harness surface the
+ * generated entrypoint needs.
+ *
+ * The template depends on `openxyz`, not `@openxyz/harness`, so we can't
+ * import `@openxyz/harness/*` directly from the generated file. The virtual
+ * module sits inside the `openxyz` package tree (`resolveDir`), where
+ * `@openxyz/harness` is a declared dep and therefore resolvable.
+ */
+function virtualHarnessPlugin(): BunPlugin {
+  // Resolve harness by absolute path — Bun's virtual-namespace loader has
+  // uneven support for bare subpath resolution past the top level. Absolute
+  // paths bypass package resolution entirely and always work.
+  const harnessRoot = new URL("../../../openxyz-harness/", import.meta.url).pathname;
+
+  return {
+    name: "openxyz-virtual-harness",
+    setup(build) {
+      build.onResolve({ filter: /^openxyz\/_harness$/ }, (args) => ({
+        path: args.path,
+        namespace: "openxyz-harness",
+      }));
+      build.onLoad({ filter: /.*/, namespace: "openxyz-harness" }, () => ({
+        loader: "ts",
+        contents: [
+          `export { OpenXyz } from ${JSON.stringify(harnessRoot + "openxyz.ts")};`,
+          `export { buildChannelFile } from ${JSON.stringify(harnessRoot + "channels.ts")};`,
+          `export { parseAgent } from ${JSON.stringify(harnessRoot + "agents/factory.ts")};`,
+          `export { parseSkill } from ${JSON.stringify(harnessRoot + "tools/skill.ts")};`,
+          `export { createChatState } from ${JSON.stringify(harnessRoot + "databases/index.ts")};`,
+        ].join("\n"),
+      }));
+    },
+  };
 }
 
 /**
