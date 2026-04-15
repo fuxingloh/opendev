@@ -15,8 +15,12 @@ export type OpenXyzTemplate = {
   tools: Record<string, Tool>;
   agents: Record<string, AgentDef>;
   skills: SkillInfo[];
-  // TODO(?): mds: { agents: string }
-  agentsmd?: string;
+  /**
+   * Template-level markdown artifacts injected into system prompts.
+   * Keyed so we can add `user`, `memory`, `bootstrap`, etc. without growing
+   * the top-level shape.
+   */
+  mds?: { agents?: string };
 };
 
 export class OpenXyz {

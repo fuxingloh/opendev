@@ -148,7 +148,7 @@ function generateEntrypoint(files: TemplateFiles): string {
       ? `  skills: [\n${skillEntries.join("\n")}\n  ].filter((s): s is NonNullable<typeof s> => !!s),`
       : `  skills: [],`,
   );
-  if (agentsMdId) body.push(`  agentsmd: ${agentsMdId},`);
+  if (agentsMdId) body.push(`  mds: { agents: ${agentsMdId} },`);
   body.push(`});`);
   body.push(`await openxyz.init({ state: await createChatState(openxyz.cwd) });`);
   body.push(``);

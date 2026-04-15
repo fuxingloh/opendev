@@ -181,8 +181,8 @@ export class AgentFactory {
     // Order: stable prefix first (basePrompt + AGENTS.md), then per-agent sections (skills, env, body)
     const parts = [basePrompt];
 
-    if (this.#template.agentsmd) {
-      parts.push("## Project Instructions\n\n" + this.#template.agentsmd.trim());
+    if (this.#template.mds?.agents) {
+      parts.push("## Project Instructions\n\n" + this.#template.mds.agents.trim());
     }
 
     if (skills.length > 0 && tools["skill"]) {

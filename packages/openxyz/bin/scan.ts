@@ -17,7 +17,7 @@ export async function scanTemplate(cwd: string): Promise<OpenXyzTemplate> {
     scanSkills(cwd),
     loadAgentsMd(cwd),
   ]);
-  return { cwd, channels, tools, agents, skills, agentsmd };
+  return { cwd, channels, tools, agents, skills, mds: { agents: agentsmd } };
 }
 
 export async function scanChannels(cwd: string): Promise<Record<string, ChannelFile>> {
