@@ -2,11 +2,14 @@ import { Bash, MountableFs, ReadWriteFs, OverlayFs } from "just-bash";
 import { tool } from "ai";
 import type { Tool } from "ai";
 import { z } from "zod";
+
 const MAX_BYTES = 50_000;
 
-const access = z.enum(["read-only", "read-write"]);
+const FilesystemAccess = z.enum(["read-only", "read-write"]);
 
-export const FilesystemConfigSchema = z.union([access, z.record(z.string(), access)]).default("read-write");
+export const FilesystemConfigSchema = z
+  .union([FilesystemAccess, z.record(z.string().startsWith("/"), FilesystemAccess)])
+  .default("read-write");
 
 export type FilesystemConfig = z.infer<typeof FilesystemConfigSchema>;
 
