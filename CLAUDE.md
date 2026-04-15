@@ -28,6 +28,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - [x] Group chat handling — mention-based trigger, author attribution, "lurk unless addressed" prompt (`working/050`)
 - [ ] File chat-sdk upstream wishlist — XML semantic tagging, auto-compaction, tool/trace file handling (`working/055`)
 - [ ] **Fan out harness dispatch across `onDirectMessage`/`onNewMention`/`onSubscribedMessage` — `onNewMessage(/.+/)` alone catches none of our traffic (`working/059`)**
+- [ ] **`openxyz build` + webhook mode — emit `.vercel/output/` artifact, `OpenXyz.load({ mode: "webhook" })` for deployable runtime (`working/060`)**
 
 ## What OpenXyz is
 
@@ -299,6 +300,8 @@ Read these first for deep context on any topic.
 - **057** — open-agents (Vercel Labs AI SDK v6 + Workflow SDK; tool implementations + cache-control + model-family dispatch worth referencing)
 - **058** — codex (OpenAI Rust agent; typed tool registry pattern by analogy, otherwise lowest priority)
 - **059** — `onNewMessage(/.+/)` catch-all mismatch (chat-sdk dispatch is tiered, our single pattern handler catches ~nothing — fan out to dm/mention/subscribed)
+- **060** — `openxyz build` + webhook mode (Vercel target, `OpenXyz.load({ mode })`, env-driven webhook switch, per-adapter handler exports)
+- **061** — Telegram adapter constraints (no historical API, cache-backed fetchMessages, `mode: "auto"` fallback semantics, callback-data 64-byte limit, card element fallbacks)
 
 ### Patterns to learn from
 
