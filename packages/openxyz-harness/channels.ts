@@ -1,4 +1,3 @@
-import { join } from "node:path";
 import type { ModelMessage } from "ai";
 import type { Thread as ChatThread, Message as ChatMessage, Adapter } from "chat";
 
@@ -58,31 +57,20 @@ export type ChannelFile<Raw = unknown> = {
   reply: (thread: Thread, message: Message<Raw>) => Promise<ReplyAction>;
 };
 
-export async function scanChannelFiles(cwd: string): Promise<Record<string, ChannelFile>> {
-  // TODO(agent): support .js and .ts
-  const glob = new Bun.Glob("channels/[!_]*.ts");
-  const channels: Record<string, ChannelFile> = {};
-
-  for await (const path of glob.scan({ cwd })) {
-    const file = path.split("/").pop()!;
-    const name = file.replace(/\.ts$/, "");
-    const mod = await import(join(cwd, path));
-    channels[name] = newChannelFile(mod, name);
-  }
-
-  return channels;
-}
-
-function newChannelFile(mod: any, filename: string): ChannelFile {
+/**
+ * Materialize a `ChannelFile` from a loaded module. The scan happens in the
+ * `openxyz` CLI layer; harness only knows how to turn a module into a channel.
+ */
+export function buildChannelFile(mod: any, filename: string): ChannelFile {
   if (!mod.default) {
     throw new Error(`[openxyz] channel file has no default export`);
   }
 
   const file = mod.default as ChannelFile;
+  // TODO(?): mod.context allow `export function context() {}`
 
   return {
     adapter: file.adapter,
-    // TODO(?): mod.context allow `export function context() {}`
     environment: file.environment,
     context: file.context,
     reply: mapReplyFunc(mod, filename),
