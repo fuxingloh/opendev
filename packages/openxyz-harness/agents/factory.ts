@@ -1,14 +1,18 @@
 import { ToolLoopAgent, tool, stepCountIs } from "ai";
 import type { Tool } from "ai";
-import { basename, join } from "node:path";
-import { existsSync } from "node:fs";
+import { basename } from "node:path";
 import { z } from "zod";
 import matter from "gray-matter";
-import { scanSkills, createSkillTool, type SkillInfo } from "../tools/skill";
-import { scanTools } from "../tools/custom";
+import { createSkillTool, type SkillInfo } from "../tools/skill";
 import { FilesystemTools, FilesystemConfigSchema } from "../tools/filesystem";
 import { web_fetch, web_search } from "../tools/web";
 import { model } from "./main";
+import type { OpenXyzTemplate } from "../openxyz";
+import general from "./defaults/general";
+import explore from "./defaults/explore";
+import research from "./defaults/research";
+import compact from "./defaults/compact";
+
 import basePrompt from "./prompts/openxyz.md" with { type: "text" };
 
 const AgentSchema = z.object({
@@ -45,71 +49,34 @@ function formatAgentList(defs: Record<string, AgentDef>): string {
     .join("\n");
 }
 
-const DEFAULTS_DIR = new URL("./defaults/", import.meta.url).pathname;
-
-async function scanDir(dir: string): Promise<Record<string, AgentDef>> {
-  const glob = new Bun.Glob("[!_]*.md");
-  const agents: Record<string, AgentDef> = {};
-
-  for await (const rel of glob.scan({ cwd: dir })) {
-    const name = rel.replace(/\.md$/, "");
-    const raw = await Bun.file(join(dir, rel)).text();
-    const { data, content } = matter(raw);
-
-    const result = AgentSchema.safeParse({
-      name,
-      description: data.description,
-      prompt: content.trim(),
-      tools: data.tools,
-      skills: data.skills,
-      filesystem: data.filesystem,
-    });
-
-    if (!result.success) {
-      console.warn(
-        `[openxyz] agents/${rel} invalid frontmatter: ${result.error.issues.map((i) => i.message).join(", ")}`,
-      );
-      continue;
-    }
-
-    agents[name] = result.data;
+export function parseAgent(name: string, raw: string): AgentDef | undefined {
+  const { data, content } = matter(raw);
+  const result = AgentSchema.safeParse({
+    name,
+    description: data.description,
+    prompt: content.trim(),
+    tools: data.tools,
+    skills: data.skills,
+    filesystem: data.filesystem,
+  });
+  if (!result.success) {
+    console.warn(
+      `[openxyz] agent "${name}" invalid frontmatter: ${result.error.issues.map((i) => i.message).join(", ")}`,
+    );
+    return undefined;
   }
-
-  return agents;
+  return result.data;
 }
 
 export class AgentFactory {
-  readonly #cwd: string;
+  readonly #template: OpenXyzTemplate;
   readonly #home: string;
-  #skills: SkillInfo[] = [];
-  #customTools: Record<string, Tool> = {};
-  #defs: Record<string, AgentDef> = {};
-  #agentsmd?: string;
+  readonly #defs: Record<string, AgentDef>;
 
-  constructor(cwd: string) {
-    this.#cwd = cwd;
-    this.#home = `/home/${basename(cwd)}`;
-  }
-
-  async init(): Promise<void> {
-    const customDir = join(this.#cwd, "agents");
-    const [skills, customTools, defaults, overrides, agentsmd] = await Promise.all([
-      scanSkills(this.#cwd),
-      scanTools(this.#cwd),
-      scanDir(DEFAULTS_DIR),
-      existsSync(customDir) ? scanDir(customDir) : {},
-      Bun.file(join(this.#cwd, "AGENTS.md"))
-        .text()
-        .catch(() => undefined),
-    ]);
-    this.#skills = skills;
-    this.#customTools = customTools;
-    this.#defs = { ...defaults, ...overrides };
-    this.#agentsmd = agentsmd;
-  }
-
-  get defs(): Record<string, AgentDef> {
-    return this.#defs;
+  constructor(template: OpenXyzTemplate) {
+    this.#template = template;
+    this.#home = `/home/${basename(template.cwd)}`;
+    this.#defs = { general, explore, research, compact, ...template.agents };
   }
 
   async create(name: string, opts?: { delegate?: boolean }): Promise<ToolLoopAgent> {
@@ -186,13 +153,13 @@ export class AgentFactory {
   }
 
   #loadTools(def: AgentDef): Record<string, Tool> {
-    const fs = new FilesystemTools(this.#cwd, def.filesystem);
+    const fs = new FilesystemTools(this.#template.cwd, def.filesystem);
     const all: Record<string, Tool> = {
       ...fs.tools(),
       web_fetch,
       web_search,
       skill: createSkillTool(this.#filterSkills(def)),
-      ...this.#customTools,
+      ...this.#template.tools,
     };
 
     if (!def.tools) return all;
@@ -207,18 +174,18 @@ export class AgentFactory {
   }
 
   #filterSkills(def: AgentDef): SkillInfo[] {
-    if (def.skills === undefined) return this.#skills;
+    if (def.skills === undefined) return this.#template.skills;
     if (def.skills.length === 0) return [];
     const set = new Set(def.skills);
-    return this.#skills.filter((s) => set.has(s.name));
+    return this.#template.skills.filter((s) => set.has(s.name));
   }
 
   #buildInstructions(def: AgentDef, tools: Record<string, Tool>, skills: SkillInfo[]): string {
     // Order: stable prefix first (basePrompt + AGENTS.md), then per-agent sections (skills, env, body)
     const parts = [basePrompt];
 
-    if (this.#agentsmd) {
-      parts.push("## Project Instructions\n\n" + this.#agentsmd.trim());
+    if (this.#template.agentsmd) {
+      parts.push("## Project Instructions\n\n" + this.#template.agentsmd.trim());
     }
 
     if (skills.length > 0 && tools["skill"]) {

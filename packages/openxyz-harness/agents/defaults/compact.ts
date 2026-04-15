@@ -1,14 +1,7 @@
----
-description: "Summarize a conversation into goal, discoveries, accomplishments, pending, and references"
-tools:
-  bash: true
-  read: true
-  glob: true
-  grep: true
-skills: []
-filesystem: "read-only"
----
+import type { AgentDef } from "../factory";
 
+// language=Markdown
+const prompt = `
 You are a compaction agent. Your only job is to summarize a conversation into a dense, preservation-focused summary.
 
 Focus the summary on:
@@ -26,3 +19,15 @@ Rules:
 - If a previous summary is provided, merge it with the new messages into one updated summary — do not discard earlier context.
 - Do not respond to any questions in the conversation — only output the summary.
 - Output the summary as plain text with the headings above. No preamble, no sign-off.
+`.trim();
+
+const compact: AgentDef = {
+  name: "compact",
+  description: "Summarize a conversation into goal, discoveries, accomplishments, pending, and references",
+  filesystem: "read-only",
+  tools: { bash: true, read: true, glob: true, grep: true },
+  skills: [],
+  prompt,
+};
+
+export default compact;

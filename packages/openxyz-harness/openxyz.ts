@@ -1,35 +1,49 @@
 import { Chat } from "chat";
-import type { Thread as ChatThread, Message as ChatMessage } from "chat";
-import { scanChannelFiles, type ChannelFile } from "./channels";
-import { AgentFactory } from "./agents/factory";
-import { createState } from "./state";
+import type { Thread as ChatThread, Message as ChatMessage, StateAdapter } from "chat";
+import type { Tool } from "ai";
+import type { ChannelFile } from "./channels";
+import { AgentFactory, type AgentDef } from "./agents/factory";
+import type { SkillInfo } from "./tools/skill";
+
+/**
+ * Materialized template shape passed into the harness. Scanning lives in the
+ * `openxyz` CLI layer — harness receives everything already parsed.
+ */
+export type OpenXyzTemplate = {
+  cwd: string;
+  channels: Record<string, ChannelFile>;
+  tools: Record<string, Tool>;
+  agents: Record<string, AgentDef>;
+  skills: SkillInfo[];
+  agentsmd?: string;
+};
 
 export class OpenXyz {
   readonly cwd: string;
   readonly agentFactory: AgentFactory;
+  readonly template: OpenXyzTemplate;
   #chat?: Chat;
-  #channels: Record<string, ChannelFile> = {};
 
-  constructor(opts: { cwd: string }) {
-    this.cwd = opts.cwd;
-    this.agentFactory = new AgentFactory(this.cwd);
+  constructor(template: OpenXyzTemplate) {
+    this.cwd = template.cwd;
+    this.template = template;
+    this.agentFactory = new AgentFactory(template);
   }
 
-  async start(): Promise<void> {
-    const [, channels, state] = await Promise.all([
-      this.agentFactory.init(),
-      scanChannelFiles(this.cwd),
-      createState(this.cwd),
-    ]);
-    this.#channels = channels;
+  /**
+   * Non-blocking init. Wires channel handlers into chat-sdk and initializes
+   * adapters. Callers own the `state` lifecycle — create it, pass it in.
+   */
+  async init(opts: { state: StateAdapter }): Promise<void> {
+    const channels = this.template.channels;
 
     if (Object.keys(channels).length === 0) {
-      throw new Error("[openxyz] no channels found under channels/*.ts — nothing to run");
+      throw new Error("[openxyz] no channels provided — nothing to run");
     }
 
     const chat = new Chat({
       adapters: Object.fromEntries(Object.entries(channels).map(([k, v]) => [k, v.adapter])) as Record<string, never>,
-      state,
+      state: opts.state,
       userName: "openxyz",
       logger: "info",
       fallbackStreamingPlaceholderText: null,
@@ -62,9 +76,18 @@ export class OpenXyz {
     this.#chat = chat;
   }
 
+  /**
+   * Per-adapter webhook handlers from chat-sdk. In webhook-mode deployments
+   * (Vercel, Bun.serve, etc.) route `/webhooks/:adapter` to `webhooks[adapter](request)`.
+   */
+  get webhooks(): Record<string, (request: Request) => Promise<Response>> {
+    if (!this.#chat) throw new Error("[openxyz] not initialized — call init() first");
+    return this.#chat.webhooks as Record<string, (request: Request) => Promise<Response>>;
+  }
+
   async onMessage(thread: ChatThread, message: ChatMessage): Promise<void> {
     await thread.subscribe();
-    const channel = this.#channels[thread.adapter.name];
+    const channel = this.template.channels[thread.adapter.name];
     if (!channel) {
       throw new Error(`[openxyz] received message for adapter "${thread.adapter.name}" but no channel config found`);
     }
