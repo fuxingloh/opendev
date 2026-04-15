@@ -31,7 +31,7 @@ export async function scanTemplate(cwd: string): Promise<OpenXyzFiles> {
     scanNamed(cwd, "tools/[!_]*.{js,ts}", /\.(js|ts)$/),
     scanNamed(cwd, "agents/[!_]*.md", /\.md$/),
     scanSkills(cwd),
-    scanVfs(cwd),
+    scanFiles(cwd),
   ]);
 
   const mds: Record<string, string> = {};
@@ -78,7 +78,7 @@ const IGNORE = [
  * the filter goes into the VFS as-is — source files, markdown, package.json,
  * plus anything else the template author chose to drop in.
  */
-async function scanVfs(cwd: string): Promise<string[]> {
+async function scanFiles(cwd: string): Promise<string[]> {
   const out: string[] = [];
   for await (const rel of new Bun.Glob("**/*").scan({ cwd, onlyFiles: true })) {
     if (IGNORE.some((re) => re.test(rel))) continue;
