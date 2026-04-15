@@ -60,13 +60,24 @@ async function scanSkills(cwd: string): Promise<Record<string, string>> {
   return out;
 }
 
+// Agent-facing deny (`.env*`, `.openxyz/`, `.vercel/`) also enforced at runtime
+// by `@openxyz/harness/drives/filtered-fs` — keep the two lists in sync.
+// Build-only noise (`node_modules/`, `.git/`, `.DS_Store`) is appended here;
+// those don't need runtime enforcement, they'd just bloat the packed bundle.
+const IGNORE = [
+  /(^|\/)\.env/,
+  /^\.openxyz(\/|$)/,
+  /^\.vercel(\/|$)/,
+  /^node_modules\//,
+  /^\.git\//,
+  /(^|\/)\.DS_Store$/,
+];
+
 /**
  * Walks the whole template dir, minus the ignore list. Anything that survives
  * the filter goes into the VFS as-is — source files, markdown, package.json,
  * plus anything else the template author chose to drop in.
  */
-const IGNORE = [/^node_modules\//, /^\.openxyz\//, /^\.vercel\//, /^\.git\//, /(^|\/)\.env/, /(^|\/)\.DS_Store$/];
-
 async function scanVfs(cwd: string): Promise<string[]> {
   const out: string[] = [];
   for await (const rel of new Bun.Glob("**/*").scan({ cwd, onlyFiles: true })) {

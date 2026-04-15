@@ -1,15 +1,26 @@
 import { ReadWriteFs, OverlayFs, type MountConfig } from "just-bash";
 import type { Drive, Permission } from "./drive.ts";
+import { IgnoredFs } from "./ignored-fs.ts";
+
+/**
+ * Paths hidden from the agent — secrets (`.env*`) and local build/deploy
+ * output (`.openxyz/`, `.vercel/`). The same list is duplicated in
+ * `packages/openxyz/bin/scan.ts` so the build-time pack step strips them
+ * from the packed snapshot. Keep both in sync.
+ */
+const IGNORES = [".env*", ".openxyz/**", ".vercel/**"];
 
 /**
  * Drive backing the agent's home directory.
  *
  * Default: disk-backed via the template's `cwd` — read-write or read-only
- * depending on the agent's declared filesystem permission.
+ * depending on the agent's declared filesystem permission. Wrapped in
+ * `IgnoredFs` to hide secrets and local build output.
  *
  * `openxyz build` intercepts this module via a Bun plugin and swaps it for
  * a generated variant whose `HomeDrive` wraps an `InMemoryFs` pre-populated
- * with the packed template snapshot. See `packages/openxyz/bin/cmds/build.ts`.
+ * with the packed template snapshot (already filtered at scan time — see
+ * `packages/openxyz/bin/scan.ts`). See `packages/openxyz/bin/cmds/build.ts`.
  */
 export class HomeDrive implements Drive {
   constructor(
@@ -18,9 +29,10 @@ export class HomeDrive implements Drive {
   ) {}
 
   mountConfig(mountPoint: string): MountConfig {
-    if (this.permission === "read-write") {
-      return { mountPoint, filesystem: new ReadWriteFs({ root: this.cwd }) };
-    }
-    return { mountPoint, filesystem: new OverlayFs({ root: this.cwd, readOnly: true }) };
+    const inner =
+      this.permission === "read-write"
+        ? new ReadWriteFs({ root: this.cwd })
+        : new OverlayFs({ root: this.cwd, readOnly: true });
+    return { mountPoint, filesystem: new IgnoredFs(IGNORES, inner) };
   }
 }
