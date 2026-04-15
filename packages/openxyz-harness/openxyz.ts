@@ -15,6 +15,7 @@ export type OpenXyzTemplate = {
   tools: Record<string, Tool>;
   agents: Record<string, AgentDef>;
   skills: SkillInfo[];
+  // TODO(?): mds: { agents: string }
   agentsmd?: string;
 };
 
