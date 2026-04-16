@@ -9,7 +9,7 @@ import type { SkillInfo } from "./tools/skill";
  * Materialized template shape passed into the harness. Scanning lives in the
  * `openxyz` CLI layer — harness receives everything already parsed.
  */
-export type OpenXyzTemplate = {
+export type OpenXyzRuntime = {
   cwd: string;
   channels: Record<string, ChannelFile>;
   tools: Record<string, Tool>;
@@ -32,14 +32,14 @@ export type OpenXyzTemplate = {
 
 export class OpenXyz {
   readonly cwd: string;
+  readonly runtime: OpenXyzRuntime;
   readonly agentFactory: AgentFactory;
-  readonly template: OpenXyzTemplate;
   #chat?: Chat;
 
-  constructor(template: OpenXyzTemplate) {
-    this.cwd = template.cwd;
-    this.template = template;
-    this.agentFactory = new AgentFactory(template);
+  constructor(runtime: OpenXyzRuntime) {
+    this.cwd = runtime.cwd;
+    this.runtime = runtime;
+    this.agentFactory = new AgentFactory(runtime);
   }
 
   /**
@@ -47,7 +47,7 @@ export class OpenXyz {
    * adapters. Callers own the `state` lifecycle — create it, pass it in.
    */
   async init(opts: { state: StateAdapter }): Promise<void> {
-    const channels = this.template.channels;
+    const channels = this.runtime.channels;
 
     if (Object.keys(channels).length === 0) {
       throw new Error("[openxyz] no channels provided — nothing to run");
@@ -99,7 +99,7 @@ export class OpenXyz {
 
   async onMessage(thread: ChatThread, message: ChatMessage): Promise<void> {
     await thread.subscribe();
-    const channel = this.template.channels[thread.adapter.name];
+    const channel = this.runtime.channels[thread.adapter.name];
     if (!channel) {
       throw new Error(`[openxyz] received message for adapter "${thread.adapter.name}" but no channel config found`);
     }

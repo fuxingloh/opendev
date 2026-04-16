@@ -5,7 +5,7 @@ import matter from "gray-matter";
 import { createSkillTool, type SkillInfo } from "../tools/skill";
 import { FilesystemTools, FilesystemConfigSchema } from "../tools/filesystem";
 import { web_fetch, web_search } from "../tools/web";
-import type { OpenXyzTemplate } from "../openxyz";
+import type { OpenXyzRuntime } from "../openxyz";
 import auto from "./defaults/auto";
 import explore from "./defaults/explore";
 import research from "./defaults/research";
@@ -68,12 +68,12 @@ export function parseAgent(name: string, raw: string): AgentDef | undefined {
 }
 
 export class AgentFactory {
-  readonly #template: OpenXyzTemplate;
+  readonly #runtime: OpenXyzRuntime;
   readonly #defs: Record<string, AgentDef>;
 
-  constructor(template: OpenXyzTemplate) {
-    this.#template = template;
-    this.#defs = { auto, explore, research, compact, ...template.agents };
+  constructor(runtime: OpenXyzRuntime) {
+    this.#runtime = runtime;
+    this.#defs = { auto, explore, research, compact, ...runtime.agents };
   }
 
   async create(name: string, opts?: { delegate?: boolean }): Promise<ToolLoopAgent> {
@@ -84,9 +84,9 @@ export class AgentFactory {
     }
 
     const modelName = def.model;
-    const model = this.#template.models[modelName];
+    const model = this.#runtime.models[modelName];
     if (!model) {
-      const available = Object.keys(this.#template.models).join(", ") || "<none>";
+      const available = Object.keys(this.#runtime.models).join(", ") || "<none>";
       throw new Error(`[openxyz] agent "${name}" references model "${modelName}" — not found. Available: ${available}`);
     }
 
@@ -157,13 +157,13 @@ export class AgentFactory {
   }
 
   #loadTools(def: AgentDef): Record<string, Tool> {
-    const fs = new FilesystemTools(this.#template.cwd, def.filesystem);
+    const fs = new FilesystemTools(this.#runtime.cwd, def.filesystem);
     const all: Record<string, Tool> = {
       ...fs.tools(),
       web_fetch,
       web_search,
       skill: createSkillTool(this.#filterSkills(def)),
-      ...this.#template.tools,
+      ...this.#runtime.tools,
     };
 
     if (!def.tools) return all;
@@ -178,18 +178,18 @@ export class AgentFactory {
   }
 
   #filterSkills(def: AgentDef): SkillInfo[] {
-    if (def.skills === undefined) return this.#template.skills;
+    if (def.skills === undefined) return this.#runtime.skills;
     if (def.skills.length === 0) return [];
     const set = new Set(def.skills);
-    return this.#template.skills.filter((s) => set.has(s.name));
+    return this.#runtime.skills.filter((s) => set.has(s.name));
   }
 
   #buildInstructions(def: AgentDef, tools: Record<string, Tool>, skills: SkillInfo[]): string {
     // Order: stable prefix first (basePrompt + AGENTS.md), then per-agent sections (skills, env, body)
     const parts = [basePrompt];
 
-    if (this.#template.mds?.agents) {
-      parts.push("## Project Instructions\n\n" + this.#template.mds.agents.trim());
+    if (this.#runtime.mds?.agents) {
+      parts.push("## Project Instructions\n\n" + this.#runtime.mds.agents.trim());
     }
 
     if (skills.length > 0 && tools["skill"]) {
