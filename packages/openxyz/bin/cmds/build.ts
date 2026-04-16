@@ -105,6 +105,14 @@ async function generateEntrypoint(
 ): Promise<string> {
   const abs = (p: string) => join(scan.cwd, p);
   const vfsPath = (p: string) => "/home/openxyz/" + p;
+  // Every generated import path is emitted relative to this build dir so the
+  // generated source is portable (no machine-specific absolute paths baked in).
+  // `Bun.build` still inlines the content, but the intermediate file is clean.
+  const buildDir = join(scan.cwd, ".openxyz/build");
+  const toRel = (p: string) => {
+    const r = relative(buildDir, p);
+    return r.startsWith(".") ? r : "./" + r;
+  };
   // Path to openxyz's shipped `models/auto.ts` on the build machine.
   // Injected when no template-provided `models/auto.ts` exists.
   const shippedAuto = new URL("../../models/auto.ts", import.meta.url).pathname;
@@ -127,14 +135,14 @@ async function generateEntrypoint(
   const channelEntries: string[] = [];
   Object.entries(t.channels).forEach(([name, path], i) => {
     const id = `__ch${i}`;
-    imports.push(`import * as ${id} from ${JSON.stringify(abs(path))};`);
+    imports.push(`import * as ${id} from ${JSON.stringify(toRel(abs(path)))};`);
     channelEntries.push(`  ${JSON.stringify(name)}: buildChannelFile(${id}, ${JSON.stringify(name)}),`);
   });
 
   const toolEntries: string[] = [];
   Object.entries(t.tools).forEach(([name, path], i) => {
     const id = `__tool${i}`;
-    imports.push(`import ${id} from ${JSON.stringify(abs(path))};`);
+    imports.push(`import ${id} from ${JSON.stringify(toRel(abs(path)))};`);
     toolEntries.push(`  ${JSON.stringify(name)}: ${id},`);
   });
 
@@ -150,7 +158,7 @@ async function generateEntrypoint(
     const path = t.models[name] ? abs(t.models[name]!) : name === "auto" ? shippedAuto : undefined;
     if (!path) continue; // referenced but no source — agent picking it surfaces clearly at runtime
     const id = `__model${modelIdx++}`;
-    imports.push(`import ${id} from ${JSON.stringify(path)};`);
+    imports.push(`import ${id} from ${JSON.stringify(toRel(path))};`);
     modelPairs.push({ name, id });
   }
   const modelEntries = modelPairs.map(
@@ -181,7 +189,7 @@ async function generateEntrypoint(
   const mdIds: Record<string, string> = {};
   Object.entries(t.mds).forEach(([slot, rel], i) => {
     const id = `__md${i}`;
-    imports.push(`import ${id} from ${JSON.stringify(abs(rel))} with { type: "text" };`);
+    imports.push(`import ${id} from ${JSON.stringify(toRel(abs(rel)))} with { type: "text" };`);
     mdIds[slot] = id;
   });
 
