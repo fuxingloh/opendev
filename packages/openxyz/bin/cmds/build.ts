@@ -143,6 +143,9 @@ function generateEntrypoint(
     mdIds[slot] = id;
   });
 
+  // Fires after all sync imports resolve. If this line doesn't print in the
+  // deploy logs, the crash is during a static import's module evaluation.
+  body.push(`console.log("[openxyz] server.js imports resolved, beginning boot");`);
   body.push(`const openxyz = new OpenXyz({`);
   // Runtime cwd = function directory on Vercel, not the build machine's path.
   body.push(`  cwd: import.meta.dir,`);
