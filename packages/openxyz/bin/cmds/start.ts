@@ -3,7 +3,7 @@ import type { LanguageModel, Tool } from "ai";
 import { OpenXyz, type OpenXyzRuntime } from "@openxyz/harness/openxyz";
 import { buildChannelFile, type ChannelFile } from "@openxyz/harness/channels";
 import { parseAgent, type AgentDef } from "@openxyz/harness/agents/factory";
-import { parseSkill, type SkillInfo } from "@openxyz/harness/tools/skill";
+import { parseSkill, type SkillDef } from "@openxyz/harness/tools/skill";
 import { createChatState } from "@openxyz/harness/databases";
 import { Command } from "commander";
 import { scanDir, type OpenXyzFiles } from "../scan";
@@ -92,7 +92,7 @@ async function loadRuntime(scan: OpenXyzFiles): Promise<OpenXyzRuntime> {
     models[name] = typeof mod.default === "function" ? await mod.default() : mod.default;
   }
 
-  const skills: SkillInfo[] = [];
+  const skills: SkillDef[] = [];
   for (const path of Object.values(t.skills)) {
     const raw = await Bun.file(abs(path)).text();
     const info = parseSkill(abs(path), raw);

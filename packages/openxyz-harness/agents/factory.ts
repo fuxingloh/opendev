@@ -1,15 +1,15 @@
 import { ToolLoopAgent, tool, stepCountIs } from "ai";
 import type { Tool } from "ai";
 import { z } from "zod";
-import matter from "gray-matter";
-import { createSkillTool, type SkillInfo } from "../tools/skill";
+import { matter } from "../utils/frontmatter";
+import { createSkillTool, type SkillDef } from "../tools/skill";
 import { FilesystemTools, FilesystemConfigSchema } from "../tools/filesystem";
 import { web_fetch, web_search } from "../tools/web";
 import type { OpenXyzRuntime } from "../openxyz";
 
 import basePrompt from "./prompts/openxyz.md" with { type: "text" };
 
-const AgentSchema = z.object({
+const AgentFrontmatterSchema = z.object({
   name: z.string(),
   description: z.string(),
   skills: z.array(z.string()).optional(),
@@ -17,14 +17,17 @@ const AgentSchema = z.object({
     .record(z.string(), z.union([z.literal(true), z.literal(false), z.record(z.string(), z.unknown())]))
     .optional(),
   filesystem: FilesystemConfigSchema,
-  prompt: z.string(),
   /** Name from the models. Falls back to "auto" when omitted. */
   model: z.string().default("auto"),
 });
 
-export type AgentDef = z.infer<typeof AgentSchema>;
+const AgentDefSchema = AgentFrontmatterSchema.extend({
+  content: z.string(),
+});
 
-function formatSkillsXml(skills: SkillInfo[]): string {
+export type AgentDef = z.infer<typeof AgentDefSchema>;
+
+function formatSkillsXml(skills: SkillDef[]): string {
   return [
     "<available_skills>",
     ...skills.map((s) =>
@@ -45,15 +48,7 @@ function formatAgentList(defs: Record<string, AgentDef>): string {
 
 export function parseAgent(name: string, raw: string): AgentDef | undefined {
   const { data, content } = matter(raw);
-  const result = AgentSchema.safeParse({
-    name,
-    description: data.description,
-    prompt: content.trim(),
-    tools: data.tools,
-    skills: data.skills,
-    filesystem: data.filesystem,
-    model: data.model,
-  });
+  const result = AgentDefSchema.safeParse({ ...data, name, content: content.trim() });
   if (!result.success) {
     console.warn(
       `[openxyz] agent "${name}" invalid frontmatter: ${result.error.issues.map((i) => i.message).join(", ")}`,
@@ -171,14 +166,14 @@ export class AgentFactory {
     return filtered;
   }
 
-  #filterSkills(def: AgentDef): SkillInfo[] {
+  #filterSkills(def: AgentDef): SkillDef[] {
     if (def.skills === undefined) return this.#runtime.skills;
     if (def.skills.length === 0) return [];
     const set = new Set(def.skills);
     return this.#runtime.skills.filter((s) => set.has(s.name));
   }
 
-  #buildInstructions(def: AgentDef, tools: Record<string, Tool>, skills: SkillInfo[]): string {
+  #buildInstructions(def: AgentDef, tools: Record<string, Tool>, skills: SkillDef[]): string {
     // Order: stable prefix first (basePrompt + AGENTS.md), then per-agent sections (skills, env, body)
     const parts = [basePrompt];
 
@@ -202,8 +197,8 @@ export class AgentFactory {
     const access = typeof fsConfig === "string" ? fsConfig : (fsConfig?.["harness"] ?? "read-write");
     parts.push(["## Environment", "", `- Home: /home/openxyz`, `- Filesystem: ${access}`].join("\n"));
 
-    if (def.prompt) {
-      parts.push(def.prompt);
+    if (def.content) {
+      parts.push(def.content);
     }
 
     return parts.join("\n\n");

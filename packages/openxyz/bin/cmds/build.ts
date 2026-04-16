@@ -4,6 +4,7 @@ import { existsSync, mkdirSync, rmSync, cpSync } from "node:fs";
 import { resolve, relative, join } from "node:path";
 import sharp from "sharp";
 import { parseAgent } from "@openxyz/harness/agents/factory";
+import { parseSkill } from "@openxyz/harness/tools/skill";
 import { scanDir, type OpenXyzFiles } from "../scan";
 
 const FAVICON_SVG = `<svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -97,11 +98,11 @@ async function collectReferencedModels(scan: OpenXyzFiles, shipped: Record<strin
   return used;
 }
 
-function generateEntrypoint(
+async function generateEntrypoint(
   scan: OpenXyzFiles,
   usedModels: Set<string>,
   defaultAgents: Record<string, string>,
-): string {
+): Promise<string> {
   const abs = (p: string) => join(scan.cwd, p);
   const vfsPath = (p: string) => "/home/openxyz/" + p;
   // Path to openxyz's shipped `models/auto.ts` on the build machine.
@@ -117,10 +118,11 @@ function generateEntrypoint(
   const imports: string[] = [];
   const body: string[] = [];
 
-  const harnessImports = ["OpenXyz", "buildChannelFile", "createChatState"];
-  if (mergedAgents.length > 0) harnessImports.push("parseAgent");
-  if (Object.keys(t.skills).length > 0) harnessImports.push("parseSkill");
-  imports.push(`import { ${harnessImports.join(", ")} } from "openxyz/_harness";`);
+  // Runtime bundle no longer needs `parseAgent`/`parseSkill` — we pre-parse
+  // at build time below and emit JSON literals. That removes the `yaml`
+  // (formerly `gray-matter`) parser from the production bundle entirely.
+  // See mnemonic/068 for the gray-matter→yaml crash story.
+  imports.push(`import { OpenXyz, buildChannelFile, createChatState } from "openxyz/_harness";`);
 
   const channelEntries: string[] = [];
   Object.entries(t.channels).forEach(([name, path], i) => {
@@ -155,24 +157,26 @@ function generateEntrypoint(
     ({ name, id }) => `  ${JSON.stringify(name)}: typeof ${id} === "function" ? await ${id}() : ${id},`,
   );
 
+  // Agents: parsed at build time, emitted as JSON literals. No runtime
+  // `parseAgent` call, no YAML parser in the bundle.
   const agentEntries: string[] = [];
-  mergedAgents.forEach(({ name, path }, i) => {
-    const id = `__agent${i}`;
-    imports.push(`import ${id} from ${JSON.stringify(path)} with { type: "text" };`);
-    agentEntries.push(
-      `  ...(function(){ const d = parseAgent(${JSON.stringify(name)}, ${id}); return d ? { ${JSON.stringify(name)}: d } : {}; })(),`,
-    );
-  });
+  for (const { name, path } of mergedAgents) {
+    const raw = await Bun.file(path).text();
+    const def = parseAgent(name, raw);
+    if (!def) continue;
+    agentEntries.push(`  ${JSON.stringify(name)}: ${JSON.stringify(def)},`);
+  }
 
+  // Skills: same approach. `parseSkill` takes the runtime VFS path (not the
+  // build-machine path) since the skill tool lists sibling files from the
+  // in-memory fs at cold start.
   const skillEntries: string[] = [];
-  Object.entries(t.skills).forEach(([_name, path], i) => {
-    const id = `__skill${i}`;
-    imports.push(`import ${id} from ${JSON.stringify(abs(path))} with { type: "text" };`);
-    // Location stored on the SkillInfo must be the runtime VFS path — the
-    // skill tool uses it to list sibling files from the in-memory fs at cold
-    // start, not the build machine's disk.
-    skillEntries.push(`  parseSkill(${JSON.stringify(vfsPath(path))}, ${id}),`);
-  });
+  for (const path of Object.values(t.skills)) {
+    const raw = await Bun.file(abs(path)).text();
+    const info = parseSkill(vfsPath(path), raw);
+    if (!info) continue;
+    skillEntries.push(`  ${JSON.stringify(info)},`);
+  }
 
   const mdIds: Record<string, string> = {};
   Object.entries(t.mds).forEach(([slot, rel], i) => {
@@ -181,9 +185,6 @@ function generateEntrypoint(
     mdIds[slot] = id;
   });
 
-  // Fires after all sync imports resolve. If this line doesn't print in the
-  // deploy logs, the crash is during a static import's module evaluation.
-  body.push(`console.log("[openxyz] server.js imports resolved, beginning boot");`);
   body.push(`const openxyz = new OpenXyz({`);
   // Runtime cwd = function directory on Vercel, not the build machine's path.
   body.push(`  cwd: import.meta.dir,`);
@@ -191,22 +192,15 @@ function generateEntrypoint(
   body.push(toolEntries.length > 0 ? `  tools: {\n${toolEntries.join("\n")}\n  },` : `  tools: {},`);
   body.push(agentEntries.length > 0 ? `  agents: {\n${agentEntries.join("\n")}\n  },` : `  agents: {},`);
   body.push(modelEntries.length > 0 ? `  models: {\n${modelEntries.join("\n")}\n  },` : `  models: {},`);
-  body.push(
-    skillEntries.length > 0
-      ? `  skills: [\n${skillEntries.join("\n")}\n  ].filter((s): s is NonNullable<typeof s> => !!s),`
-      : `  skills: [],`,
-  );
+  body.push(skillEntries.length > 0 ? `  skills: [\n${skillEntries.join("\n")}\n  ],` : `  skills: [],`);
   const mdEntries = Object.entries(mdIds).map(([slot, id]) => `    ${JSON.stringify(slot)}: ${id},`);
   if (mdEntries.length > 0) body.push(`  mds: {\n${mdEntries.join("\n")}\n  },`);
   body.push(`});`);
-  body.push(`console.log("[openxyz] boot: createChatState …");`);
   body.push(`await openxyz.init({ state: await createChatState(openxyz.cwd) });`);
-  body.push(`console.log("[openxyz] boot: ready for webhook traffic");`);
   body.push(``);
   body.push(`export default {`);
   body.push(`  async fetch(request: Request): Promise<Response> {`);
   body.push(`    const { pathname } = new URL(request.url);`);
-  body.push(`    console.log(\`[openxyz] fetch \${request.method} \${pathname}\`);`);
   body.push(`    const match = pathname.match(/^\\/api\\/webhooks\\/([^/]+)\\/?$/);`);
   body.push(`    if (!match) return new Response("not found", { status: 404 });`);
   body.push(`    const handler = openxyz.webhooks[match[1]!];`);
@@ -233,25 +227,7 @@ async function buildVercel(cwd: string): Promise<void> {
   mkdirSync(buildDir, { recursive: true });
   const entrypoint = resolve(buildDir, "server.ts");
 
-  // DIAGNOSTIC MODE — bisect logic lives in packages/openxyz/_diagnostic.ts
-  // where every suspect dep is reachable via node resolution. Entrypoint
-  // just imports it by absolute path, same pattern virtualHarnessPlugin uses.
-  const diagnosticPath = new URL("../../_diagnostic.ts", import.meta.url).pathname;
-  const MINIMAL_ENTRYPOINT = `import { runBisect } from ${JSON.stringify(diagnosticPath)};
-console.log("[stage] -1 server.ts top, about to runBisect");
-await runBisect();
-console.log("[stage] bisect complete");
-
-export default {
-  async fetch(request: Request): Promise<Response> {
-    const { pathname } = new URL(request.url);
-    console.log(\`[stage] fetch \${request.method} \${pathname}\`);
-    return new Response("alive", { status: 200, headers: { "content-type": "text/plain" } });
-  },
-};
-`;
-  await Bun.write(entrypoint, MINIMAL_ENTRYPOINT);
-  // await Bun.write(entrypoint, generateEntrypoint(files, usedModels, defaultAgents));
+  await Bun.write(entrypoint, await generateEntrypoint(files, usedModels, defaultAgents));
 
   const outputDir = resolve(cwd, ".vercel/output");
   rmSync(outputDir, { recursive: true, force: true });
@@ -267,11 +243,7 @@ export default {
     naming: "server.js",
     target: "bun",
     format: "esm",
-    // Source maps disabled — our bundle is ~5MB so the map is ~9MB, and
-    // Bun on Vercel was crashing at startup with `ReadOnlyFileSystem` (likely
-    // the sourcemap loader trying to write somewhere unwritable). Re-enable
-    // once we've confirmed another cause.
-    sourcemap: "none",
+    sourcemap: "linked",
     define: {
       "process.env.NODE_ENV": JSON.stringify("production"),
       "process.env.OPENXYZ_BACKEND": JSON.stringify("vercel"),
@@ -293,9 +265,7 @@ export default {
         runtime: "bun1.x",
         launcherType: "Bun",
         shouldAddHelpers: true,
-        // Disabled alongside `sourcemap: "none"` above — the pair was
-        // causing Bun to crash on Vercel with `ReadOnlyFileSystem`.
-        shouldAddSourcemapSupport: false,
+        shouldAddSourcemapSupport: true,
       },
       null,
       2,
@@ -361,8 +331,6 @@ function virtualHarnessPlugin(): BunPlugin {
         contents: [
           `export { OpenXyz } from ${JSON.stringify(harnessRoot + "openxyz.ts")};`,
           `export { buildChannelFile } from ${JSON.stringify(harnessRoot + "channels.ts")};`,
-          `export { parseAgent } from ${JSON.stringify(harnessRoot + "agents/factory.ts")};`,
-          `export { parseSkill } from ${JSON.stringify(harnessRoot + "tools/skill.ts")};`,
           `export { createChatState } from ${JSON.stringify(harnessRoot + "databases/index.ts")};`,
         ].join("\n"),
       }));

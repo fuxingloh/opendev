@@ -3,7 +3,7 @@ import type { Thread as ChatThread, Message as ChatMessage, StateAdapter } from 
 import type { LanguageModel, Tool } from "ai";
 import type { ChannelFile } from "./channels";
 import { AgentFactory, type AgentDef } from "./agents/factory";
-import type { SkillInfo } from "./tools/skill";
+import type { SkillDef } from "./tools/skill";
 
 /**
  * Materialized template shape passed into the harness. Scanning lives in the
@@ -21,7 +21,7 @@ export type OpenXyzRuntime = {
    * hands the resolved map over.
    */
   models: Record<string, LanguageModel>;
-  skills: SkillInfo[];
+  skills: SkillDef[];
   /**
    * Template-level markdown artifacts injected into system prompts.
    * Keyed so we can add `user`, `memory`, `bootstrap`, etc. without growing

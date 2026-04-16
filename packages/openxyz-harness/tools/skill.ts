@@ -1,30 +1,37 @@
 import { join, dirname } from "node:path";
 import { tool } from "ai";
 import { z } from "zod";
-import matter from "gray-matter";
-// Scanning lives in the openxyz CLI layer; harness parses raw content only.
+import { matter } from "../utils/frontmatter";
 
 // TODO: SKILL.md frontmatter could support `allowed-tools` to restrict which tools the agent
 //  can use while executing a skill (e.g. research skill only allows web_search + web_fetch).
 //  Claude Code and opencode both support this. May or may not want this — skills currently
 //  just inject instructions, they don't constrain the tool set.
-export interface SkillInfo {
-  name: string;
-  description: string;
-  location: string;
-  content: string;
-}
+const SkillFrontmatterSchema = z.object({
+  name: z.string(),
+  description: z.string(),
+});
 
-export function parseSkill(path: string, raw: string): SkillInfo | undefined {
+const SkillDefSchema = SkillFrontmatterSchema.extend({
+  content: z.string(),
+  location: z.string(),
+});
+
+export type SkillDef = z.infer<typeof SkillDefSchema>;
+
+export function parseSkill(path: string, raw: string): SkillDef | undefined {
   const { data, content } = matter(raw);
-  if (!data.name || !data.description) {
-    console.warn(`[openxyz] ${path} missing name or description in frontmatter, skipping`);
+  const result = SkillDefSchema.safeParse({ ...data, content, location: path });
+  if (!result.success) {
+    console.warn(
+      `[openxyz] skill "${path}" invalid frontmatter: ${result.error.issues.map((i) => i.message).join(", ")}`,
+    );
     return undefined;
   }
-  return { name: data.name, description: data.description, location: path, content };
+  return result.data;
 }
 
-export function createSkillTool(skills: SkillInfo[]) {
+export function createSkillTool(skills: SkillDef[]) {
   return tool({
     description: "Load a skill by name. Available skills are listed in the system prompt.",
     inputSchema: z.object({
