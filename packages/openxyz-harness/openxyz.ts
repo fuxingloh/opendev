@@ -40,6 +40,9 @@ export class OpenXyz {
     this.cwd = runtime.cwd;
     this.runtime = runtime;
     this.agentFactory = new AgentFactory(runtime);
+    console.log(
+      `[openxyz] constructed — cwd=${runtime.cwd} channels=[${Object.keys(runtime.channels).join(", ")}] tools=[${Object.keys(runtime.tools).join(", ")}] agents=[${Object.keys(runtime.agents).join(", ")}] models=[${Object.keys(runtime.models).join(", ")}] skills=${runtime.skills.length}`,
+    );
   }
 
   /**
@@ -53,6 +56,7 @@ export class OpenXyz {
       throw new Error("[openxyz] no channels provided — nothing to run");
     }
 
+    console.log(`[openxyz] init: creating chat with ${Object.keys(channels).length} channel(s)`);
     const chat = new Chat({
       adapters: Object.fromEntries(Object.entries(channels).map(([k, v]) => [k, v.adapter])) as Record<string, never>,
       state: opts.state,
@@ -84,8 +88,10 @@ export class OpenXyz {
     });
 
     // initialize() auto-starts polling for adapters in "auto" mode when no webhook is configured.
+    console.log(`[openxyz] init: chat.initialize() …`);
     await chat.initialize();
     this.#chat = chat;
+    console.log(`[openxyz] init: ready — webhooks=[${Object.keys(chat.webhooks ?? {}).join(", ")}]`);
   }
 
   /**
@@ -98,6 +104,9 @@ export class OpenXyz {
   }
 
   async onMessage(thread: ChatThread, message: ChatMessage): Promise<void> {
+    console.log(
+      `[openxyz] onMessage: adapter=${thread.adapter.name} thread=${thread.id} msg=${message.id} isDM=${thread.isDM} isMention=${(message as { isMention?: boolean }).isMention ?? false}`,
+    );
     await thread.subscribe();
     const channel = this.runtime.channels[thread.adapter.name];
     if (!channel) {
@@ -105,6 +114,9 @@ export class OpenXyz {
     }
 
     const reply = await channel.reply(thread, message);
+    console.log(
+      `[openxyz] reply action: agent=${reply.agent ?? "<none>"} typing=${!!reply.typing} reaction=${reply.reaction ?? "<none>"}`,
+    );
 
     if (reply.typing) {
       const status = typeof reply.typing === "string" ? reply.typing : undefined;

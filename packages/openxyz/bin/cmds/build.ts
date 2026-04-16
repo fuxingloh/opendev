@@ -158,11 +158,14 @@ function generateEntrypoint(
   const mdEntries = Object.entries(mdIds).map(([slot, id]) => `    ${JSON.stringify(slot)}: ${id},`);
   if (mdEntries.length > 0) body.push(`  mds: {\n${mdEntries.join("\n")}\n  },`);
   body.push(`});`);
+  body.push(`console.log("[openxyz] boot: createChatState …");`);
   body.push(`await openxyz.init({ state: await createChatState(openxyz.cwd) });`);
+  body.push(`console.log("[openxyz] boot: ready for webhook traffic");`);
   body.push(``);
   body.push(`export default {`);
   body.push(`  async fetch(request: Request): Promise<Response> {`);
   body.push(`    const { pathname } = new URL(request.url);`);
+  body.push(`    console.log(\`[openxyz] fetch \${request.method} \${pathname}\`);`);
   body.push(`    const match = pathname.match(/^\\/api\\/webhooks\\/([^/]+)\\/?$/);`);
   body.push(`    if (!match) return new Response("not found", { status: 404 });`);
   body.push(`    const handler = openxyz.webhooks[match[1]!];`);
