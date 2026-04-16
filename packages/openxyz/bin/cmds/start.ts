@@ -1,25 +1,25 @@
 import { join } from "node:path";
 import type { LanguageModel, Tool } from "ai";
-import { OpenXyz, type OpenXyzTemplate } from "@openxyz/harness/openxyz";
+import { OpenXyz, type OpenXyzRuntime } from "@openxyz/harness/openxyz";
 import { buildChannelFile, type ChannelFile } from "@openxyz/harness/channels";
 import { parseAgent, type AgentDef } from "@openxyz/harness/agents/factory";
 import { parseSkill, type SkillInfo } from "@openxyz/harness/tools/skill";
 import { createChatState } from "@openxyz/harness/databases";
 import { Command } from "commander";
-import { scanTemplate, type OpenXyzFiles } from "../scan";
+import { scanDir, type OpenXyzFiles } from "../scan";
 
 export default new Command("start").option("-p, --port <port>", "Port to listen on").action(action);
 
 async function action(): Promise<void> {
-  const scan = await scanTemplate(process.cwd());
-  if (Object.keys(scan.template.channels).length === 0) {
-    console.error("[openxyz] no channels found under channels/*.ts — nothing to run");
+  const files = await scanDir(process.cwd());
+  if (Object.keys(files.template.channels).length === 0) {
+    console.error("[openxyz] no channels found under channels/*.{js,ts} — nothing to run");
     process.exit(1);
   }
 
-  const template = await loadTemplate(scan);
-  const openxyz = new OpenXyz(template);
-  const state = await createChatState(template.cwd);
+  const runtime = await loadRuntime(files);
+  const openxyz = new OpenXyz(runtime);
+  const state = await createChatState(runtime.cwd);
   await openxyz.init({ state });
   console.log("openxyz running. Ctrl-C to quit.");
 
@@ -39,7 +39,7 @@ async function action(): Promise<void> {
  * `openxyz build` doesn't call this — it code-gens static imports from the
  * same `OpenXyzFiles` shape instead.
  */
-async function loadTemplate(scan: OpenXyzFiles): Promise<OpenXyzTemplate> {
+async function loadRuntime(scan: OpenXyzFiles): Promise<OpenXyzRuntime> {
   const abs = (p: string) => join(scan.cwd, p);
   const t = scan.template;
 
@@ -66,14 +66,29 @@ async function loadTemplate(scan: OpenXyzFiles): Promise<OpenXyzTemplate> {
     if (def) agents[name] = def;
   }
 
+  // Walk agent frontmatter → set of model names we actually need to load.
+  // Agents without an explicit `model:` fall back to "auto" in the factory.
+  const used = new Set<string>(["auto"]);
+  for (const def of Object.values(agents)) {
+    if (def.model) used.add(def.model);
+  }
+
   const models: Record<string, LanguageModel> = {};
-  for (const [name, path] of Object.entries(t.models)) {
-    const mod = await import(abs(path));
+  for (const name of used) {
+    const path = t.models[name]
+      ? abs(t.models[name]!)
+      : name === "auto"
+        ? new URL("../../models/auto.ts", import.meta.url).pathname
+        : undefined;
+    if (!path) continue; // referenced but no source — surfaces clearly when an agent picks it
+    const mod = await import(path);
     if (!mod.default) {
       console.warn(`[openxyz] models/${name} has no default export, skipping`);
       continue;
     }
-    models[name] = mod.default;
+    // Default export may be a concrete LanguageModel or a factory function
+    // (e.g. `auto.ts` that resolves `OPENXYZ_MODEL` at load time).
+    models[name] = typeof mod.default === "function" ? await mod.default() : mod.default;
   }
 
   const skills: SkillInfo[] = [];

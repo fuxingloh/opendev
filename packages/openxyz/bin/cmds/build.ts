@@ -2,7 +2,8 @@ import type { BunPlugin } from "bun";
 import { Command } from "commander";
 import { existsSync, mkdirSync, rmSync, cpSync } from "node:fs";
 import { resolve, relative, join } from "node:path";
-import { scanTemplate, type OpenXyzFiles } from "../scan";
+import { parseAgent } from "@openxyz/harness/agents/factory";
+import { scanDir, type OpenXyzFiles } from "../scan";
 
 export default new Command("build")
   .description("Build the openxyz agent for deployment")
@@ -25,9 +26,28 @@ async function action(opts: Opts): Promise<void> {
   await buildVercel(cwd);
 }
 
-function generateEntrypoint(scan: OpenXyzFiles): string {
+/**
+ * Walk template agents via the real `parseAgent` (same Zod schema the
+ * harness uses at runtime) and collect the set of model names they reference.
+ * Harness-default agents (auto/explore/research/compact) all resolve to
+ * "auto" today, so that's always in the set.
+ */
+async function collectReferencedModels(scan: OpenXyzFiles): Promise<Set<string>> {
+  const used = new Set<string>(["auto"]);
+  for (const [name, rel] of Object.entries(scan.template.agents)) {
+    const raw = await Bun.file(join(scan.cwd, rel)).text();
+    const def = parseAgent(name, raw);
+    if (def) used.add(def.model);
+  }
+  return used;
+}
+
+function generateEntrypoint(scan: OpenXyzFiles, usedModels: Set<string>): string {
   const abs = (p: string) => join(scan.cwd, p);
   const vfsPath = (p: string) => "/home/openxyz/" + p;
+  // Path to openxyz's shipped `models/auto.ts` on the build machine.
+  // Injected when no template-provided `models/auto.ts` exists.
+  const shippedAuto = new URL("../../models/auto.ts", import.meta.url).pathname;
   const t = scan.template;
 
   const imports: string[] = [];
@@ -51,6 +71,25 @@ function generateEntrypoint(scan: OpenXyzFiles): string {
     imports.push(`import ${id} from ${JSON.stringify(abs(path))};`);
     toolEntries.push(`  ${JSON.stringify(name)}: ${id},`);
   });
+
+  // Models: emit only names actually referenced by agents. `auto` is always
+  // referenced (agents without explicit `model:` fall back to it), so if the
+  // template doesn't override `models/auto.ts`, point at openxyz's shipped one.
+  // Factory exports (e.g. `auto.ts` that switches on `OPENXYZ_MODEL`) are
+  // resolved at boot time on the deployed function — the generated entrypoint
+  // awaits them before handing the map to `OpenXyz`.
+  const modelPairs: Array<{ name: string; id: string }> = [];
+  let modelIdx = 0;
+  for (const name of usedModels) {
+    const path = t.models[name] ? abs(t.models[name]!) : name === "auto" ? shippedAuto : undefined;
+    if (!path) continue; // referenced but no source — agent picking it surfaces clearly at runtime
+    const id = `__model${modelIdx++}`;
+    imports.push(`import ${id} from ${JSON.stringify(path)};`);
+    modelPairs.push({ name, id });
+  }
+  const modelEntries = modelPairs.map(
+    ({ name, id }) => `  ${JSON.stringify(name)}: typeof ${id} === "function" ? await ${id}() : ${id},`,
+  );
 
   const agentEntries: string[] = [];
   Object.entries(t.agents).forEach(([name, path], i) => {
@@ -84,6 +123,7 @@ function generateEntrypoint(scan: OpenXyzFiles): string {
   body.push(channelEntries.length > 0 ? `  channels: {\n${channelEntries.join("\n")}\n  },` : `  channels: {},`);
   body.push(toolEntries.length > 0 ? `  tools: {\n${toolEntries.join("\n")}\n  },` : `  tools: {},`);
   body.push(agentEntries.length > 0 ? `  agents: {\n${agentEntries.join("\n")}\n  },` : `  agents: {},`);
+  body.push(modelEntries.length > 0 ? `  models: {\n${modelEntries.join("\n")}\n  },` : `  models: {},`);
   body.push(
     skillEntries.length > 0
       ? `  skills: [\n${skillEntries.join("\n")}\n  ].filter((s): s is NonNullable<typeof s> => !!s),`
@@ -109,24 +149,26 @@ function generateEntrypoint(scan: OpenXyzFiles): string {
 }
 
 async function buildVercel(cwd: string): Promise<void> {
-  const scan = await scanTemplate(cwd);
+  const files = await scanDir(cwd);
 
-  if (Object.keys(scan.template.channels).length === 0) {
-    console.error("[openxyz] no channels found under channels/*.ts — nothing to build");
+  if (Object.keys(files.template.channels).length === 0) {
+    console.error("[openxyz] no channels found under channels/*.{js,ts} — nothing to build");
     process.exit(1);
   }
+
+  const usedModels = await collectReferencedModels(files);
 
   const buildDir = resolve(cwd, ".openxyz/build");
   mkdirSync(buildDir, { recursive: true });
   const entrypoint = resolve(buildDir, "server.ts");
-  await Bun.write(entrypoint, generateEntrypoint(scan));
+  await Bun.write(entrypoint, generateEntrypoint(files, usedModels));
 
   const outputDir = resolve(cwd, ".vercel/output");
   rmSync(outputDir, { recursive: true, force: true });
   const funcDir = resolve(outputDir, "functions/index.func");
   mkdirSync(funcDir, { recursive: true });
 
-  const homePlugin = inMemoryHomePlugin(cwd, scan.files);
+  const homePlugin = inMemoryHomePlugin(cwd, files.files);
   const harnessPlugin = virtualHarnessPlugin();
 
   const result = await Bun.build({
