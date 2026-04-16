@@ -248,7 +248,11 @@ async function buildVercel(cwd: string): Promise<void> {
     naming: "server.js",
     target: "bun",
     format: "esm",
-    sourcemap: "linked",
+    // Source maps disabled — our bundle is ~5MB so the map is ~9MB, and
+    // Bun on Vercel was crashing at startup with `ReadOnlyFileSystem` (likely
+    // the sourcemap loader trying to write somewhere unwritable). Re-enable
+    // once we've confirmed another cause.
+    sourcemap: "none",
     define: {
       "process.env.NODE_ENV": JSON.stringify("production"),
       "process.env.OPENXYZ_BACKEND": JSON.stringify("vercel"),
@@ -270,7 +274,9 @@ async function buildVercel(cwd: string): Promise<void> {
         runtime: "bun1.x",
         launcherType: "Bun",
         shouldAddHelpers: true,
-        shouldAddSourcemapSupport: true,
+        // Disabled alongside `sourcemap: "none"` above — the pair was
+        // causing Bun to crash on Vercel with `ReadOnlyFileSystem`.
+        shouldAddSourcemapSupport: false,
       },
       null,
       2,
