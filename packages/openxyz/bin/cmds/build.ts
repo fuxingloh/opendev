@@ -233,19 +233,55 @@ async function buildVercel(cwd: string): Promise<void> {
   mkdirSync(buildDir, { recursive: true });
   const entrypoint = resolve(buildDir, "server.ts");
 
-  // DIAGNOSTIC MODE: writing a minimal stub instead of the real entrypoint to
-  // isolate the Vercel `ReadOnlyFileSystem` crash. Restore by swapping the
-  // `Bun.write` line below.
-  const MINIMAL_ENTRYPOINT = `console.log("[minimal] server.ts module load");
+  // DIAGNOSTIC MODE — bisecting which import triggers the Vercel
+  // ReadOnlyFileSystem crash. Stage logs before/after each import group so the
+  // last log printed before the crash names the guilty module.
+  // Restore the real build by swapping the `Bun.write` lines at the bottom.
+  const MINIMAL_ENTRYPOINT = `console.log("[stage] 0 server.ts top");
+
+console.log("[stage] 1 importing @openxyz/harness/openxyz …");
+await import("@openxyz/harness/openxyz");
+console.log("[stage] 1 ok");
+
+console.log("[stage] 2 importing @openxyz/harness/channels …");
+await import("@openxyz/harness/channels");
+console.log("[stage] 2 ok");
+
+console.log("[stage] 3 importing @openxyz/harness/agents/factory …");
+await import("@openxyz/harness/agents/factory");
+console.log("[stage] 3 ok");
+
+console.log("[stage] 4 importing @openxyz/harness/tools/skill …");
+await import("@openxyz/harness/tools/skill");
+console.log("[stage] 4 ok");
+
+console.log("[stage] 5 importing @openxyz/harness/databases …");
+await import("@openxyz/harness/databases");
+console.log("[stage] 5 ok");
+
+console.log("[stage] 6 importing @chat-adapter/telegram …");
+await import("@chat-adapter/telegram");
+console.log("[stage] 6 ok");
+
+console.log("[stage] 7 importing ai …");
+await import("ai");
+console.log("[stage] 7 ok");
+
+console.log("[stage] 8 importing @ai-sdk/amazon-bedrock …");
+await import("@ai-sdk/amazon-bedrock");
+console.log("[stage] 8 ok");
+
+console.log("[stage] 9 importing @ai-sdk/openai-compatible …");
+await import("@ai-sdk/openai-compatible");
+console.log("[stage] 9 ok");
+
+console.log("[stage] all imports resolved");
 
 export default {
   async fetch(request: Request): Promise<Response> {
     const { pathname } = new URL(request.url);
-    console.log(\`[minimal] fetch \${request.method} \${pathname}\`);
-    return new Response("alive", {
-      status: 200,
-      headers: { "content-type": "text/plain" },
-    });
+    console.log(\`[stage] fetch \${request.method} \${pathname}\`);
+    return new Response("alive", { status: 200, headers: { "content-type": "text/plain" } });
   },
 };
 `;
