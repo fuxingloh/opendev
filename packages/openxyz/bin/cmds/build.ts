@@ -122,7 +122,7 @@ async function generateEntrypoint(
   // at build time below and emit JSON literals. That removes the `yaml`
   // (formerly `gray-matter`) parser from the production bundle entirely.
   // See mnemonic/068 for the gray-matter→yaml crash story.
-  imports.push(`import { OpenXyz, buildChannelFile, createChatState } from "openxyz/_harness";`);
+  imports.push(`import { OpenXyz, buildChannelFile, createChatState, waitUntil } from "openxyz/_harness";`);
 
   const channelEntries: string[] = [];
   Object.entries(t.channels).forEach(([name, path], i) => {
@@ -198,6 +198,14 @@ async function generateEntrypoint(
   body.push(`});`);
   body.push(`await openxyz.init({ state: await createChatState(openxyz.cwd) });`);
   body.push(``);
+  // `waitUntil` is the load-bearing bit on Vercel. chat-sdk dispatches
+  // messages as fire-and-forget background tasks (chat.ts `processMessage`);
+  // without waitUntil, Vercel kills the lambda as soon as the 200 response
+  // ships, cutting the agent stream short. Vercel then retries the webhook
+  // (or Redis re-dispatches) → the same message shows up across multiple
+  // requestIds. Passing waitUntil keeps the lambda alive until chat-sdk's
+  // internal task resolves. Re-exported via the harness virtual module since
+  // `@vercel/functions` is an openxyz dep, not template-resolvable.
   body.push(`export default {`);
   body.push(`  async fetch(request: Request): Promise<Response> {`);
   body.push(`    const { pathname } = new URL(request.url);`);
@@ -205,7 +213,7 @@ async function generateEntrypoint(
   body.push(`    if (!match) return new Response("not found", { status: 404 });`);
   body.push(`    const handler = openxyz.webhooks[match[1]!];`);
   body.push(`    if (!handler) return new Response(\`unknown adapter: \${match[1]}\`, { status: 404 });`);
-  body.push(`    return handler(request);`);
+  body.push(`    return handler(request, { waitUntil });`);
   body.push(`  },`);
   body.push(`};`);
 
@@ -335,6 +343,11 @@ function virtualHarnessPlugin(): BunPlugin {
           `export { OpenXyz } from ${JSON.stringify(harnessRoot + "openxyz.ts")};`,
           `export { buildChannelFile } from ${JSON.stringify(harnessRoot + "channels.ts")};`,
           `export { createChatState } from ${JSON.stringify(harnessRoot + "databases/index.ts")};`,
+          // waitUntil is not a harness concern per se, but @vercel/functions is
+          // an openxyz dep — re-exporting here lets the generated entrypoint
+          // pull it through the same virtual module instead of adding a
+          // separate bare-specifier import that template cwd can't resolve.
+          `export { waitUntil } from "@vercel/functions";`,
         ].join("\n"),
       }));
     },
