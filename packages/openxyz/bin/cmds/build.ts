@@ -234,46 +234,49 @@ async function buildVercel(cwd: string): Promise<void> {
   const entrypoint = resolve(buildDir, "server.ts");
 
   // DIAGNOSTIC MODE — bisecting which import triggers the Vercel
-  // ReadOnlyFileSystem crash. Stage logs before/after each import group so the
-  // last log printed before the crash names the guilty module.
-  // Restore the real build by swapping the `Bun.write` lines at the bottom.
+  // ReadOnlyFileSystem crash. Stage logs before/after each import group so
+  // the last log printed before the crash names the guilty module.
+  // Absolute paths resolve from where build.ts lives on the build machine
+  // (same pattern the real virtualHarnessPlugin uses).
+  // Resolve every spec to an absolute path from the harness dir — that's
+  // where all the transitive deps live in node_modules. Template cwd can't
+  // see them directly. `Bun.resolveSync` falls back to node resolution.
+  const harnessRoot = new URL("../../../openxyz-harness/", import.meta.url).pathname;
+  const resolveFromHarness = (spec: string): string => {
+    try {
+      return Bun.resolveSync(spec, harnessRoot);
+    } catch {
+      return spec; // fallback — will fail loudly at build time with a clearer msg
+    }
+  };
+  const stages: Array<{ label: string; spec: string }> = [
+    { label: "@openxyz/harness/openxyz", spec: harnessRoot + "openxyz.ts" },
+    { label: "@openxyz/harness/channels", spec: harnessRoot + "channels.ts" },
+    { label: "@openxyz/harness/agents/factory", spec: harnessRoot + "agents/factory.ts" },
+    { label: "@openxyz/harness/tools/skill", spec: harnessRoot + "tools/skill.ts" },
+    { label: "@openxyz/harness/databases", spec: harnessRoot + "databases/index.ts" },
+    { label: "@chat-adapter/telegram", spec: resolveFromHarness("@chat-adapter/telegram") },
+    { label: "chat", spec: resolveFromHarness("chat") },
+    { label: "ai", spec: resolveFromHarness("ai") },
+    { label: "@ai-sdk/amazon-bedrock", spec: resolveFromHarness("@ai-sdk/amazon-bedrock") },
+    { label: "@ai-sdk/openai-compatible", spec: resolveFromHarness("@ai-sdk/openai-compatible") },
+    { label: "pg", spec: resolveFromHarness("pg") },
+    { label: "@chat-adapter/state-pg", spec: resolveFromHarness("@chat-adapter/state-pg") },
+    { label: "just-bash", spec: resolveFromHarness("just-bash") },
+  ];
+
+  const stageLines = stages
+    .map(
+      ({ label, spec }, i) =>
+        `console.log("[stage] ${i + 1} importing ${label} …");\n` +
+        `await import(${JSON.stringify(spec)});\n` +
+        `console.log("[stage] ${i + 1} ok");`,
+    )
+    .join("\n\n");
+
   const MINIMAL_ENTRYPOINT = `console.log("[stage] 0 server.ts top");
 
-console.log("[stage] 1 importing @openxyz/harness/openxyz …");
-await import("@openxyz/harness/openxyz");
-console.log("[stage] 1 ok");
-
-console.log("[stage] 2 importing @openxyz/harness/channels …");
-await import("@openxyz/harness/channels");
-console.log("[stage] 2 ok");
-
-console.log("[stage] 3 importing @openxyz/harness/agents/factory …");
-await import("@openxyz/harness/agents/factory");
-console.log("[stage] 3 ok");
-
-console.log("[stage] 4 importing @openxyz/harness/tools/skill …");
-await import("@openxyz/harness/tools/skill");
-console.log("[stage] 4 ok");
-
-console.log("[stage] 5 importing @openxyz/harness/databases …");
-await import("@openxyz/harness/databases");
-console.log("[stage] 5 ok");
-
-console.log("[stage] 6 importing @chat-adapter/telegram …");
-await import("@chat-adapter/telegram");
-console.log("[stage] 6 ok");
-
-console.log("[stage] 7 importing ai …");
-await import("ai");
-console.log("[stage] 7 ok");
-
-console.log("[stage] 8 importing @ai-sdk/amazon-bedrock …");
-await import("@ai-sdk/amazon-bedrock");
-console.log("[stage] 8 ok");
-
-console.log("[stage] 9 importing @ai-sdk/openai-compatible …");
-await import("@ai-sdk/openai-compatible");
-console.log("[stage] 9 ok");
+${stageLines}
 
 console.log("[stage] all imports resolved");
 
