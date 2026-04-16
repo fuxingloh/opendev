@@ -233,52 +233,14 @@ async function buildVercel(cwd: string): Promise<void> {
   mkdirSync(buildDir, { recursive: true });
   const entrypoint = resolve(buildDir, "server.ts");
 
-  // DIAGNOSTIC MODE — bisecting which import triggers the Vercel
-  // ReadOnlyFileSystem crash. Stage logs before/after each import group so
-  // the last log printed before the crash names the guilty module.
-  // Absolute paths resolve from where build.ts lives on the build machine
-  // (same pattern the real virtualHarnessPlugin uses).
-  // Resolve every spec to an absolute path from the harness dir — that's
-  // where all the transitive deps live in node_modules. Template cwd can't
-  // see them directly. `Bun.resolveSync` falls back to node resolution.
-  const harnessRoot = new URL("../../../openxyz-harness/", import.meta.url).pathname;
-  const resolveFromHarness = (spec: string): string => {
-    try {
-      return Bun.resolveSync(spec, harnessRoot);
-    } catch {
-      return spec; // fallback — will fail loudly at build time with a clearer msg
-    }
-  };
-  const stages: Array<{ label: string; spec: string }> = [
-    { label: "@openxyz/harness/openxyz", spec: harnessRoot + "openxyz.ts" },
-    { label: "@openxyz/harness/channels", spec: harnessRoot + "channels.ts" },
-    { label: "@openxyz/harness/agents/factory", spec: harnessRoot + "agents/factory.ts" },
-    { label: "@openxyz/harness/tools/skill", spec: harnessRoot + "tools/skill.ts" },
-    { label: "@openxyz/harness/databases", spec: harnessRoot + "databases/index.ts" },
-    { label: "@chat-adapter/telegram", spec: resolveFromHarness("@chat-adapter/telegram") },
-    { label: "chat", spec: resolveFromHarness("chat") },
-    { label: "ai", spec: resolveFromHarness("ai") },
-    { label: "@ai-sdk/amazon-bedrock", spec: resolveFromHarness("@ai-sdk/amazon-bedrock") },
-    { label: "@ai-sdk/openai-compatible", spec: resolveFromHarness("@ai-sdk/openai-compatible") },
-    { label: "pg", spec: resolveFromHarness("pg") },
-    { label: "@chat-adapter/state-pg", spec: resolveFromHarness("@chat-adapter/state-pg") },
-    { label: "just-bash", spec: resolveFromHarness("just-bash") },
-  ];
-
-  const stageLines = stages
-    .map(
-      ({ label, spec }, i) =>
-        `console.log("[stage] ${i + 1} importing ${label} …");\n` +
-        `await import(${JSON.stringify(spec)});\n` +
-        `console.log("[stage] ${i + 1} ok");`,
-    )
-    .join("\n\n");
-
-  const MINIMAL_ENTRYPOINT = `console.log("[stage] 0 server.ts top");
-
-${stageLines}
-
-console.log("[stage] all imports resolved");
+  // DIAGNOSTIC MODE — bisect logic lives in packages/openxyz/_diagnostic.ts
+  // where every suspect dep is reachable via node resolution. Entrypoint
+  // just imports it by absolute path, same pattern virtualHarnessPlugin uses.
+  const diagnosticPath = new URL("../../_diagnostic.ts", import.meta.url).pathname;
+  const MINIMAL_ENTRYPOINT = `import { runBisect } from ${JSON.stringify(diagnosticPath)};
+console.log("[stage] -1 server.ts top, about to runBisect");
+await runBisect();
+console.log("[stage] bisect complete");
 
 export default {
   async fetch(request: Request): Promise<Response> {
