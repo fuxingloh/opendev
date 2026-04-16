@@ -9,48 +9,6 @@ export type TelegramConfig = TelegramAdapterConfig & {
   botToken: string;
 };
 
-/**
- * Upstream `TelegramRawMessage` omits reply/forward/quote fields. Extend here
- * with the subset we annotate against. See https://core.telegram.org/bots/api#message.
- */
-export type TelegramRaw = TelegramRawMessage & {
-  reply_to_message?: TelegramRawMessage & {
-    text?: string;
-    caption?: string;
-    from?: TelegramUser;
-    sender_chat?: TelegramChat;
-  };
-  /** Set when the user selected a portion of the replied-to message to quote. */
-  quote?: { text: string; is_manual?: boolean };
-  /** Telegram Bot API 7.0+ unified forward metadata. */
-  forward_origin?: TelegramForwardOrigin;
-  /** Legacy forward fields (still populated alongside forward_origin). */
-  forward_from?: TelegramUser;
-  forward_from_chat?: TelegramChat;
-  forward_sender_name?: string;
-  is_automatic_forward?: boolean;
-};
-
-interface TelegramUser {
-  id?: number;
-  first_name?: string;
-  last_name?: string;
-  username?: string;
-  is_bot?: boolean;
-}
-
-interface TelegramChat {
-  id?: number;
-  title?: string;
-  username?: string;
-}
-
-type TelegramForwardOrigin =
-  | { type: "user"; sender_user: TelegramUser }
-  | { type: "hidden_user"; sender_user_name: string }
-  | { type: "chat"; sender_chat: TelegramChat; author_signature?: string }
-  | { type: "channel"; chat: TelegramChat; message_id: number; author_signature?: string };
-
 export function telegram(opts: TelegramConfig): ChannelFile<TelegramRaw> {
   // On Vercel, the function is serverless — polling would block forever and
   // bleed connections. Require webhook mode; the user runs Telegram's
@@ -110,6 +68,48 @@ export function telegram(opts: TelegramConfig): ChannelFile<TelegramRaw> {
     },
   };
 }
+
+/**
+ * Upstream `TelegramRawMessage` omits reply/forward/quote fields. Extend here
+ * with the subset we annotate against. See https://core.telegram.org/bots/api#message.
+ */
+export type TelegramRaw = TelegramRawMessage & {
+  reply_to_message?: TelegramRawMessage & {
+    text?: string;
+    caption?: string;
+    from?: TelegramUser;
+    sender_chat?: TelegramChat;
+  };
+  /** Set when the user selected a portion of the replied-to message to quote. */
+  quote?: { text: string; is_manual?: boolean };
+  /** Telegram Bot API 7.0+ unified forward metadata. */
+  forward_origin?: TelegramForwardOrigin;
+  /** Legacy forward fields (still populated alongside forward_origin). */
+  forward_from?: TelegramUser;
+  forward_from_chat?: TelegramChat;
+  forward_sender_name?: string;
+  is_automatic_forward?: boolean;
+};
+
+interface TelegramUser {
+  id?: number;
+  first_name?: string;
+  last_name?: string;
+  username?: string;
+  is_bot?: boolean;
+}
+
+interface TelegramChat {
+  id?: number;
+  title?: string;
+  username?: string;
+}
+
+type TelegramForwardOrigin =
+  | { type: "user"; sender_user: TelegramUser }
+  | { type: "hidden_user"; sender_user_name: string }
+  | { type: "chat"; sender_chat: TelegramChat; author_signature?: string }
+  | { type: "channel"; chat: TelegramChat; message_id: number; author_signature?: string };
 
 function annotate(aiMsg: AiMessage, src: Message, botUserId: string | undefined): AiMessage {
   const raw = src.raw as TelegramRaw | undefined;
