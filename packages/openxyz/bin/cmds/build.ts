@@ -279,7 +279,10 @@ async function buildVercel(cwd: string): Promise<void> {
     JSON.stringify(
       {
         version: 3,
-        routes: [{ handle: "filesystem" }, { src: "/(.*)", dest: "/" }],
+        // Static assets first (favicon, etc.), then only webhook paths reach
+        // the function. Everything else 404s at the edge — non-webhook
+        // traffic never wakes the function.
+        routes: [{ handle: "filesystem" }, { src: "/api/webhooks/([^/]+)/?", dest: "/" }],
       },
       null,
       2,
