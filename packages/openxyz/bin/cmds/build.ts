@@ -282,6 +282,10 @@ async function buildVercel(cwd: string): Promise<void> {
         launcherType: "Bun",
         shouldAddHelpers: true,
         shouldAddSourcemapSupport: true,
+        // LLM streams + tool loops can run long. Vercel's hard cap is 300s
+        // on Pro (900s on Enterprise). Setting 300 gives us headroom; the
+        // function still shuts down when work finishes via waitUntil.
+        maxDuration: 300,
       },
       null,
       2,

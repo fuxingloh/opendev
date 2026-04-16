@@ -156,8 +156,13 @@ export class OpenXyz {
 
     if (!reply.agent) return;
 
+    console.log(`[openxyz] agentFactory.create(${reply.agent}) …`);
     const agent = await this.agentFactory.create(reply.agent);
+    console.log(`[openxyz] agent ready, fetching env+context …`);
     const [env, context] = await Promise.all([channel.environment(thread, message), channel.context(thread, message)]);
+    console.log(
+      `[openxyz] env+context ready (envLines=${env.length}, contextMsgs=${context.length}), calling agent.stream …`,
+    );
     // Env goes before the conversation, not after — Bedrock (and some other providers) reject system
     // messages interleaved between user/assistant turns. Kept out of the cached `instructions` prefix
     // because env is per-message dynamic (time, user, channel metadata).
@@ -165,7 +170,9 @@ export class OpenXyz {
     const result = await agent.stream({
       prompt: prompt,
     });
+    console.log(`[openxyz] stream started, posting …`);
     await thread.post(result.fullStream);
+    console.log(`[openxyz] thread.post done`);
   }
 
   async stop(): Promise<void> {
