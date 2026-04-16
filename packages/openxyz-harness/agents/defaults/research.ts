@@ -13,6 +13,7 @@ const research: AgentDef = {
   tools: { bash: true, read: true, web_search: true, web_fetch: true },
   skills: [],
   prompt,
+  model: "auto",
 };
 
 export default research;

@@ -8,6 +8,7 @@ const auto: AgentDef = {
   description: "General-purpose agent for multi-step tasks",
   filesystem: "read-write",
   prompt,
+  model: "auto",
 };
 
 export default auto;

@@ -28,6 +28,7 @@ const compact: AgentDef = {
   tools: { bash: true, read: true, glob: true, grep: true },
   skills: [],
   prompt,
+  model: "auto",
 };
 
 export default compact;
