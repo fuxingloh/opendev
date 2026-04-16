@@ -221,7 +221,26 @@ async function generateEntrypoint(
   body.push(`    if (!match) return new Response("not found", { status: 404 });`);
   body.push(`    const handler = openxyz.webhooks[match[1]!];`);
   body.push(`    if (!handler) return new Response(\`unknown adapter: \${match[1]}\`, { status: 404 });`);
-  body.push(`    return handler(request, { waitUntil: (task) => waitUntil(task) });`);
+  // Belt-and-braces: capture chat-sdk's background tasks in an array AND
+  // hand them to Vercel's waitUntil. On Bun runtime, waitUntil appears to
+  // only keep the function alive for a short grace period (~1-2s) after
+  // response, not through the full task lifetime. The inline Promise.all
+  // below holds the response until processing completes. Telegram webhooks
+  // tolerate slow responses up to ~75s; agent streams should finish well
+  // inside that window.
+  body.push(`    const tasks: Promise<unknown>[] = [];`);
+  body.push(`    const response = await handler(request, {`);
+  body.push(`      waitUntil: (task) => {`);
+  body.push(`        tasks.push(task);`);
+  body.push(`        waitUntil(task);`);
+  body.push(`      },`);
+  body.push(`    });`);
+  body.push(`    if (tasks.length > 0) {`);
+  body.push(`      console.log(\`[openxyz] awaiting \${tasks.length} background task(s) inline\`);`);
+  body.push(`      await Promise.allSettled(tasks);`);
+  body.push(`      console.log(\`[openxyz] tasks settled\`);`);
+  body.push(`    }`);
+  body.push(`    return response;`);
   body.push(`  },`);
   body.push(`};`);
 
@@ -299,10 +318,12 @@ async function buildVercel(cwd: string): Promise<void> {
     JSON.stringify(
       {
         version: 3,
-        // Static assets first (favicon, etc.), then only webhook paths reach
-        // the function. Everything else 404s at the edge — non-webhook
-        // traffic never wakes the function.
-        routes: [{ handle: "filesystem" }, { src: "/api/webhooks/([^/]+)/?", dest: "/" }],
+        // Static assets first (favicon, etc.), webhook paths to the function,
+        // everything else 404s at the edge. The trailing `status: 404` rule
+        // is needed — without it Vercel routes unmatched paths to the
+        // function-at-root by default (which then just 404s but wakes the
+        // lambda for every bot/scanner hit).
+        routes: [{ handle: "filesystem" }, { src: "/api/webhooks/([^/]+)/?", dest: "/" }, { src: "/.*", status: 404 }],
       },
       null,
       2,
