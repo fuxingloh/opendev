@@ -1,20 +1,27 @@
+import { createPgliteState } from "./pglite";
 import { createPgState } from "./pg";
+import { createRedisState } from "./redis";
 
 /**
  * Pick the chat-sdk state adapter based on env.
  *
- * NOTE: PGlite temporarily disabled — diagnosing a Vercel `ReadOnlyFileSystem`
- * crash. If `PG_DATABASE_POSTGRES_URL` isn't set we fail fast instead of
- * falling back to PGlite. Restore the `./pglite` import once we've confirmed
- * whether PGlite's WASM was the culprit.
+ * - `REDIS_URL` → Redis (preferred for serverless; reconnects cleanly).
+ * - `PG_DATABASE_POSTGRES_URL` → Postgres.
+ * - else → PGlite on disk (local dev / ephemeral Vercel `/tmp`).
  */
-export async function createChatState(_cwd: string) {
-  const url = process.env.PG_DATABASE_POSTGRES_URL;
-  if (url && url.length > 0) {
-    console.log("[openxyz] state: Postgres");
-    return createPgState(url);
+export async function createChatState(cwd: string) {
+  const redisUrl = process.env.REDIS_URL;
+  if (redisUrl && redisUrl.length > 0) {
+    console.log("[openxyz] state: Redis");
+    return createRedisState(redisUrl);
   }
-  throw new Error("[openxyz] PG_DATABASE_POSTGRES_URL not set — PGlite fallback temporarily disabled");
+  const pgUrl = process.env.PG_DATABASE_POSTGRES_URL;
+  if (pgUrl && pgUrl.length > 0) {
+    console.log("[openxyz] state: Postgres");
+    return createPgState(pgUrl);
+  }
+  console.log("[openxyz] state: PGlite");
+  return createPgliteState(cwd);
 }
 
-export { createPgState };
+export { createPgliteState, createPgState, createRedisState };
