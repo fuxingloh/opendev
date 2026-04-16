@@ -6,10 +6,6 @@ import { createSkillTool, type SkillInfo } from "../tools/skill";
 import { FilesystemTools, FilesystemConfigSchema } from "../tools/filesystem";
 import { web_fetch, web_search } from "../tools/web";
 import type { OpenXyzRuntime } from "../openxyz";
-import auto from "./defaults/auto";
-import explore from "./defaults/explore";
-import research from "./defaults/research";
-import compact from "./defaults/compact";
 
 import basePrompt from "./prompts/openxyz.md" with { type: "text" };
 
@@ -69,17 +65,15 @@ export function parseAgent(name: string, raw: string): AgentDef | undefined {
 
 export class AgentFactory {
   readonly #runtime: OpenXyzRuntime;
-  readonly #defs: Record<string, AgentDef>;
 
   constructor(runtime: OpenXyzRuntime) {
     this.#runtime = runtime;
-    this.#defs = { auto, explore, research, compact, ...runtime.agents };
   }
 
   async create(name: string, opts?: { delegate?: boolean }): Promise<ToolLoopAgent> {
-    const def = this.#defs[name];
+    const def = this.#runtime.agents[name];
     if (!def) {
-      const available = Object.keys(this.#defs).join(", ");
+      const available = Object.keys(this.#runtime.agents).join(", ");
       throw new Error(`[openxyz] agent "${name}" not found. Available: ${available}`);
     }
 
@@ -141,7 +135,7 @@ export class AgentFactory {
         "",
         "## Available Agents",
         // TODO(?): allow agents to agents communication to be configurable
-        formatAgentList(factory.#defs),
+        formatAgentList(factory.#runtime.agents),
       ].join("\n"),
       inputSchema: z.object({
         description: z.string().describe("Short (3-5 words) task description."),

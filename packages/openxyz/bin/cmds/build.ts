@@ -27,22 +27,43 @@ async function action(opts: Opts): Promise<void> {
 }
 
 /**
- * Walk template agents via the real `parseAgent` (same Zod schema the
- * harness uses at runtime) and collect the set of model names they reference.
- * Harness-default agents (auto/explore/research/compact) all resolve to
- * "auto" today, so that's always in the set.
+ * openxyz-shipped agents live at `packages/openxyz/agents/*.md` next to the
+ * CLI. Returns a name→absolute-path map, same shape as `scan.template.agents`.
+ * TODO: add a toggle so templates can opt out.
  */
-async function collectReferencedModels(scan: OpenXyzFiles): Promise<Set<string>> {
-  const used = new Set<string>(["auto"]);
+async function loadDefaultAgents(): Promise<Record<string, string>> {
+  const dir = new URL("../../agents/", import.meta.url).pathname;
+  const out: Record<string, string> = {};
+  for await (const file of new Bun.Glob("*.md").scan({ cwd: dir })) {
+    out[file.replace(/\.md$/, "")] = join(dir, file);
+  }
+  return out;
+}
+
+/**
+ * Walk every agent (shipped + template) via the real `parseAgent` and collect
+ * the set of model names they reference. Template entries override shipped
+ * ones by name, matching the runtime merge order in `loadRuntime`.
+ */
+async function collectReferencedModels(scan: OpenXyzFiles, shipped: Record<string, string>): Promise<Set<string>> {
+  const merged: Record<string, string> = { ...shipped };
   for (const [name, rel] of Object.entries(scan.template.agents)) {
-    const raw = await Bun.file(join(scan.cwd, rel)).text();
+    merged[name] = join(scan.cwd, rel);
+  }
+  const used = new Set<string>();
+  for (const [name, path] of Object.entries(merged)) {
+    const raw = await Bun.file(path).text();
     const def = parseAgent(name, raw);
     if (def) used.add(def.model);
   }
   return used;
 }
 
-function generateEntrypoint(scan: OpenXyzFiles, usedModels: Set<string>): string {
+function generateEntrypoint(
+  scan: OpenXyzFiles,
+  usedModels: Set<string>,
+  defaultAgents: Record<string, string>,
+): string {
   const abs = (p: string) => join(scan.cwd, p);
   const vfsPath = (p: string) => "/home/openxyz/" + p;
   // Path to openxyz's shipped `models/auto.ts` on the build machine.
@@ -50,11 +71,16 @@ function generateEntrypoint(scan: OpenXyzFiles, usedModels: Set<string>): string
   const shippedAuto = new URL("../../models/auto.ts", import.meta.url).pathname;
   const t = scan.template;
 
+  // Merge shipped + template agents; template wins on name collision.
+  const mergedAgents: Array<{ name: string; path: string }> = [];
+  for (const [name, path] of Object.entries(defaultAgents)) mergedAgents.push({ name, path });
+  for (const [name, rel] of Object.entries(t.agents)) mergedAgents.push({ name, path: abs(rel) });
+
   const imports: string[] = [];
   const body: string[] = [];
 
   const harnessImports = ["OpenXyz", "buildChannelFile", "createChatState"];
-  if (Object.keys(t.agents).length > 0) harnessImports.push("parseAgent");
+  if (mergedAgents.length > 0) harnessImports.push("parseAgent");
   if (Object.keys(t.skills).length > 0) harnessImports.push("parseSkill");
   imports.push(`import { ${harnessImports.join(", ")} } from "openxyz/_harness";`);
 
@@ -92,9 +118,9 @@ function generateEntrypoint(scan: OpenXyzFiles, usedModels: Set<string>): string
   );
 
   const agentEntries: string[] = [];
-  Object.entries(t.agents).forEach(([name, path], i) => {
+  mergedAgents.forEach(({ name, path }, i) => {
     const id = `__agent${i}`;
-    imports.push(`import ${id} from ${JSON.stringify(abs(path))} with { type: "text" };`);
+    imports.push(`import ${id} from ${JSON.stringify(path)} with { type: "text" };`);
     agentEntries.push(
       `  ...(function(){ const d = parseAgent(${JSON.stringify(name)}, ${id}); return d ? { ${JSON.stringify(name)}: d } : {}; })(),`,
     );
@@ -156,12 +182,13 @@ async function buildVercel(cwd: string): Promise<void> {
     process.exit(1);
   }
 
-  const usedModels = await collectReferencedModels(files);
+  const defaultAgents = await loadDefaultAgents();
+  const usedModels = await collectReferencedModels(files, defaultAgents);
 
   const buildDir = resolve(cwd, ".openxyz/build");
   mkdirSync(buildDir, { recursive: true });
   const entrypoint = resolve(buildDir, "server.ts");
-  await Bun.write(entrypoint, generateEntrypoint(files, usedModels));
+  await Bun.write(entrypoint, generateEntrypoint(files, usedModels, defaultAgents));
 
   const outputDir = resolve(cwd, ".vercel/output");
   rmSync(outputDir, { recursive: true, force: true });

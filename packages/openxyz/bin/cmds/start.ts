@@ -59,18 +59,19 @@ async function loadRuntime(scan: OpenXyzFiles): Promise<OpenXyzRuntime> {
     tools[name] = mod.default;
   }
 
-  const agents: Record<string, AgentDef> = {};
+  // TODO: add a toggle so templates can opt out of shipped agents.
+  const agents: Record<string, AgentDef> = { ...(await loadDefaultAgents()) };
   for (const [name, path] of Object.entries(t.agents)) {
     const raw = await Bun.file(abs(path)).text();
     const def = parseAgent(name, raw);
     if (def) agents[name] = def;
   }
 
-  // Walk agent frontmatter → set of model names we actually need to load.
-  // Agents without an explicit `model:` fall back to "auto" in the factory.
-  const used = new Set<string>(["auto"]);
+  // Walk every agent → set of model names we need to load. Zod schema
+  // defaults `model` to "auto", so it's always a string post-parse.
+  const used = new Set<string>();
   for (const def of Object.values(agents)) {
-    if (def.model) used.add(def.model);
+    used.add(def.model);
   }
 
   const models: Record<string, LanguageModel> = {};
@@ -103,4 +104,21 @@ async function loadRuntime(scan: OpenXyzFiles): Promise<OpenXyzRuntime> {
   if (t.mds.agents) mds.agents = await Bun.file(abs(t.mds.agents)).text();
 
   return { cwd: scan.cwd, channels, tools, agents, models, skills, mds };
+}
+
+/**
+ * Load the openxyz-shipped default agents (auto, explore, research, compact)
+ * from `packages/openxyz/agents/*.md`. Parsed via `parseAgent` — same code
+ * path as template agents, so schema rules apply uniformly.
+ */
+async function loadDefaultAgents(): Promise<Record<string, AgentDef>> {
+  const dir = new URL("../../agents/", import.meta.url).pathname;
+  const out: Record<string, AgentDef> = {};
+  for await (const file of new Bun.Glob("*.md").scan({ cwd: dir })) {
+    const name = file.replace(/\.md$/, "");
+    const raw = await Bun.file(join(dir, file)).text();
+    const def = parseAgent(name, raw);
+    if (def) out[name] = def;
+  }
+  return out;
 }
