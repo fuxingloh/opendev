@@ -1,6 +1,6 @@
 import { Chat } from "chat";
 import type { Thread as ChatThread, Message as ChatMessage, StateAdapter } from "chat";
-import type { Tool } from "ai";
+import type { LanguageModel, Tool } from "ai";
 import type { ChannelFile } from "./channels";
 import { AgentFactory, type AgentDef } from "./agents/factory";
 import type { SkillInfo } from "./tools/skill";
@@ -14,6 +14,13 @@ export type OpenXyzTemplate = {
   channels: Record<string, ChannelFile>;
   tools: Record<string, Tool>;
   agents: Record<string, AgentDef>;
+  /**
+   * Named language models — concrete, pre-resolved. The `openxyz` CLI scans
+   * agent frontmatter, figures out which names are referenced, loads just
+   * those (calling any factory exports like `auto.ts` at load time), and
+   * hands the resolved map over.
+   */
+  models: Record<string, LanguageModel>;
   skills: SkillInfo[];
   /**
    * Template-level markdown artifacts injected into system prompts.

@@ -5,9 +5,8 @@ import matter from "gray-matter";
 import { createSkillTool, type SkillInfo } from "../tools/skill";
 import { FilesystemTools, FilesystemConfigSchema } from "../tools/filesystem";
 import { web_fetch, web_search } from "../tools/web";
-import { model } from "./main";
 import type { OpenXyzTemplate } from "../openxyz";
-import general from "./defaults/general";
+import auto from "./defaults/auto";
 import explore from "./defaults/explore";
 import research from "./defaults/research";
 import compact from "./defaults/compact";
@@ -23,8 +22,8 @@ const AgentSchema = z.object({
     .optional(),
   filesystem: FilesystemConfigSchema,
   prompt: z.string(),
-  // TODO: model override — `model:` field in frontmatter, needs provider routing
-  //   definitely need model object config, with optionality, instead of a single model
+  /** Name from the models. Falls back to "auto" when omitted. */
+  model: z.string().default("auto"),
 });
 
 export type AgentDef = z.infer<typeof AgentSchema>;
@@ -57,6 +56,7 @@ export function parseAgent(name: string, raw: string): AgentDef | undefined {
     tools: data.tools,
     skills: data.skills,
     filesystem: data.filesystem,
+    model: data.model,
   });
   if (!result.success) {
     console.warn(
@@ -73,7 +73,7 @@ export class AgentFactory {
 
   constructor(template: OpenXyzTemplate) {
     this.#template = template;
-    this.#defs = { general, explore, research, compact, ...template.agents };
+    this.#defs = { auto, explore, research, compact, ...template.agents };
   }
 
   async create(name: string, opts?: { delegate?: boolean }): Promise<ToolLoopAgent> {
@@ -81,6 +81,13 @@ export class AgentFactory {
     if (!def) {
       const available = Object.keys(this.#defs).join(", ");
       throw new Error(`[openxyz] agent "${name}" not found. Available: ${available}`);
+    }
+
+    const modelName = def.model;
+    const model = this.#template.models[modelName];
+    if (!model) {
+      const available = Object.keys(this.#template.models).join(", ") || "<none>";
+      throw new Error(`[openxyz] agent "${name}" references model "${modelName}" — not found. Available: ${available}`);
     }
 
     const tools = this.#loadTools(def);
@@ -139,12 +146,12 @@ export class AgentFactory {
       inputSchema: z.object({
         description: z.string().describe("Short (3-5 words) task description."),
         prompt: z.string().describe("Full task prompt for the agent."),
-        agent: z.string().optional().describe("Agent name. Defaults to 'general'."),
+        agent: z.string().default("auto").describe("Agent name. Defaults to 'auto'."),
       }),
       execute: async ({ description, prompt, agent: name }) => {
-        const sub = await factory.create(name ?? "general", { delegate: false });
+        const sub = await factory.create(name, { delegate: false });
         const result = await sub.generate({ prompt });
-        return `<delegate_result agent="${name ?? "general"}" description="${description}">\n${result.text}\n</delegate_result>`;
+        return `<delegate_result agent="${name}" description="${description}">\n${result.text}\n</delegate_result>`;
       },
     });
   }
