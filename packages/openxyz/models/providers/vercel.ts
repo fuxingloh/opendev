@@ -1,5 +1,6 @@
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
-import type { LanguageModel } from "ai";
+import type { Model } from "@openxyz/harness/openxyz";
+import systemPrompt from "../prompts/system.md" with { type: "text" };
 
 // Vercel AI Gateway — routes provider-prefixed model ids (e.g. "anthropic/claude-sonnet-4-5").
 // Requires `AI_GATEWAY_API_KEY`. TODO: swap to `@ai-sdk/gateway` when added as a dep.
@@ -14,6 +15,6 @@ const gateway = createOpenAICompatible({
  * routed through `@ai-sdk/openai-compatible`, which drops anthropic markers.
  * Swap to `@ai-sdk/gateway` and re-wire caching there when that migration lands.
  */
-export default function vercel(modelId: string): LanguageModel {
-  return gateway(modelId);
+export default function vercel(modelId: string): Model {
+  return { model: gateway(modelId), systemPrompt };
 }

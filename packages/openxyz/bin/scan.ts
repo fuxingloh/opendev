@@ -18,7 +18,7 @@ export type OpenXyzFiles = {
     channels: Record<string, string>;
     tools: Record<string, string>;
     agents: Record<string, string>;
-    /** Named `LanguageModel` instances. Flat namespace — `providers/<name>.ts` is merged in. */
+    /** Named `Model` instances (LanguageModel + systemPrompt). Flat namespace — `providers/<name>.ts` is merged in. */
     models: Record<string, string>;
     skills: Record<string, string>;
     /** Top-level markdown injected into prompts, e.g. `agents` → `AGENTS.md`. */

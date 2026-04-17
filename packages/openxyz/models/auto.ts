@@ -1,4 +1,4 @@
-import type { LanguageModel } from "ai";
+import type { Model } from "@openxyz/harness/openxyz";
 
 /**
  * Picks a provider at call time based on `OPENXYZ_MODEL`, e.g.:
@@ -14,7 +14,7 @@ import type { LanguageModel } from "ai";
  * (which may itself contain `/`) is passed through as the model id. Provider
  * modules are dynamic-imported so only the chosen one loads.
  */
-export default async function auto(): Promise<LanguageModel> {
+export default async function auto(): Promise<Model> {
   if (process.env.OPENXYZ_MODEL === undefined) {
     throw new Error("OPENXYZ_MODEL environment variable is not set");
   }

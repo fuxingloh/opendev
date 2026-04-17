@@ -6,6 +6,17 @@ import { AgentFactory, type AgentDef } from "./agents/factory";
 import type { SkillDef } from "./tools/skill";
 
 /**
+ * Named language model + the system prompt that ships with it. The prompt
+ * is per-model so providers can tune wording for model-family quirks (what
+ * works for Claude is not what works for GLM). Default prompt lives in
+ * `packages/openxyz/models/prompts/system.md`; providers can override.
+ */
+export type Model = {
+  model: LanguageModel;
+  systemPrompt: string;
+};
+
+/**
  * Materialized template shape passed into the harness. Scanning lives in the
  * `openxyz` CLI layer — harness receives everything already parsed.
  */
@@ -20,7 +31,7 @@ export type OpenXyzRuntime = {
    * those (calling any factory exports like `auto.ts` at load time), and
    * hands the resolved map over.
    */
-  models: Record<string, LanguageModel>;
+  models: Record<string, Model>;
   skills: SkillDef[];
   /**
    * Template-level markdown artifacts injected into system prompts.

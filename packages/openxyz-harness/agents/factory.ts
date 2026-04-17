@@ -7,8 +7,6 @@ import { FilesystemTools, FilesystemConfigSchema } from "../tools/filesystem";
 import { web_fetch, web_search } from "../tools/web";
 import type { OpenXyzRuntime } from "../openxyz";
 
-import basePrompt from "./prompts/openxyz.md" with { type: "text" };
-
 const AgentFrontmatterSchema = z.object({
   name: z.string(),
   description: z.string(),
@@ -73,11 +71,12 @@ export class AgentFactory {
     }
 
     const modelName = def.model;
-    const model = this.#runtime.models[modelName];
-    if (!model) {
+    const entry = this.#runtime.models[modelName];
+    if (!entry) {
       const available = Object.keys(this.#runtime.models).join(", ") || "<none>";
       throw new Error(`[openxyz] agent "${name}" references model "${modelName}" — not found. Available: ${available}`);
     }
+    const { model, systemPrompt } = entry;
 
     const tools = this.#loadTools(def);
     if (opts?.delegate !== false) {
@@ -85,7 +84,7 @@ export class AgentFactory {
     }
 
     const skills = this.#filterSkills(def);
-    const instructions = this.#buildInstructions(def, tools, skills);
+    const instructions = this.#buildInstructions(def, systemPrompt, tools, skills);
 
     // Step budget: hardcoded 100 as runaway safety net.
     //  Final step forces text-only response so the agent summarizes rather than cutting off.
@@ -173,9 +172,9 @@ export class AgentFactory {
     return this.#runtime.skills.filter((s) => set.has(s.name));
   }
 
-  #buildInstructions(def: AgentDef, tools: Record<string, Tool>, skills: SkillDef[]): string {
-    // Order: stable prefix first (basePrompt + AGENTS.md), then per-agent sections (skills, env, body)
-    const parts = [basePrompt];
+  #buildInstructions(def: AgentDef, systemPrompt: string, tools: Record<string, Tool>, skills: SkillDef[]): string {
+    // Order: stable prefix first (model's systemPrompt + AGENTS.md), then per-agent sections (skills, env, body)
+    const parts = [systemPrompt];
 
     if (this.#runtime.mds?.agents) {
       parts.push("## Project Instructions\n\n" + this.#runtime.mds.agents.trim());

@@ -1,6 +1,6 @@
 import { join } from "node:path";
-import type { LanguageModel, Tool } from "ai";
-import { OpenXyz, type OpenXyzRuntime } from "@openxyz/harness/openxyz";
+import type { Tool } from "ai";
+import { OpenXyz, type Model, type OpenXyzRuntime } from "@openxyz/harness/openxyz";
 import { loadChannel, type Channel } from "@openxyz/harness/channels";
 import { parseAgent, type AgentDef } from "@openxyz/harness/agents/factory";
 import { parseSkill, type SkillDef } from "@openxyz/harness/tools/skill";
@@ -74,7 +74,7 @@ async function loadRuntime(scan: OpenXyzFiles): Promise<OpenXyzRuntime> {
     used.add(def.model);
   }
 
-  const models: Record<string, LanguageModel> = {};
+  const models: Record<string, Model> = {};
   for (const name of used) {
     const path = t.models[name]
       ? abs(t.models[name]!)
@@ -87,7 +87,7 @@ async function loadRuntime(scan: OpenXyzFiles): Promise<OpenXyzRuntime> {
       console.warn(`[openxyz] models/${name} has no default export, skipping`);
       continue;
     }
-    // Default export may be a concrete LanguageModel or a factory function
+    // Default export may be a concrete `Model` or a factory function
     // (e.g. `auto.ts` that resolves `OPENXYZ_MODEL` at load time).
     models[name] = typeof mod.default === "function" ? await mod.default() : mod.default;
   }

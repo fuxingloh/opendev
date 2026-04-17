@@ -1,5 +1,6 @@
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
-import type { LanguageModel } from "ai";
+import type { Model } from "@openxyz/harness/openxyz";
+import systemPrompt from "../prompts/system.md" with { type: "text" };
 
 // opencode.ai's hosted OpenAI-compatible gateway (mnemonic/025).
 // `public` is the free-tier key; set `OPENCODE_API_KEY` to use your own.
@@ -14,6 +15,6 @@ const zen = createOpenAICompatible({
  * drops non-`openaiCompatible` providerOptions, so the anthropic/bedrock markers
  * don't reach the wire. See `_cache.ts` follow-up notes.
  */
-export default function opencode(modelId: string): LanguageModel {
-  return zen(modelId);
+export default function opencode(modelId: string): Model {
+  return { model: zen(modelId), systemPrompt };
 }

@@ -1,5 +1,6 @@
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
-import type { LanguageModel } from "ai";
+import type { Model } from "@openxyz/harness/openxyz";
+import systemPrompt from "../prompts/system.md" with { type: "text" };
 
 // OpenRouter's OpenAI-compatible gateway. Requires `OPENROUTER_API_KEY`.
 // See https://openrouter.ai/docs for available model ids.
@@ -15,6 +16,6 @@ const or = createOpenAICompatible({
  * caching here would need `providerOptions.openaiCompatible.cache_control` and
  * verification that OpenRouter forwards it upstream.
  */
-export default function openrouter(modelId: string): LanguageModel {
-  return or(modelId);
+export default function openrouter(modelId: string): Model {
+  return { model: or(modelId), systemPrompt };
 }
