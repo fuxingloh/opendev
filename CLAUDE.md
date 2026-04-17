@@ -46,23 +46,27 @@ Default to AI Gateway model strings (`provider/model`) over direct provider SDK 
 ## Monorepo layout
 
 - **Root** (`package.json`): Bun workspaces (`packages/*`, `templates/*`) via the `workspaces` field, Turborepo, shared Prettier config (120-char width, `prettier-plugin-packagejson`). Package manager and runtime is **Bun** (not npm/pnpm/yarn). No `engines.node` pin.
-- **`packages/openxyz`**: the publishable **CLI + thin facade** that templates (downstream users) depend on. Owns the `openxyz` bin and the re-export surface (`openxyz/tools`, etc.). ESM-only. **No build step** — Bun runs TypeScript natively. `bin.openxyz` in `package.json` points directly at `commands/bin.ts` (`#!/usr/bin/env bun`). Subpath exports point at source (`./tools.ts`) — consumers need Bun. Peer-deps `ai@^6` and `@ai-sdk/provider@^3`. When adding a new public module, add it to `package.json` `exports` and `files`. Keep this package small — the real work lives in `@openxyz/runtime`.
-- **`packages/openxyz-runtime`** (`@openxyz/runtime`): the **engine**. Agent loop, tool registry/discovery, VFS (`just-bash` + `MountableFs`), channel bridge, session store, streaming. Scoped package, internal to the openxyz family. Templates do **not** import from here directly — they import from `openxyz`, which re-exports whatever runtime surface the template needs. This keeps template imports simple (`import { tool } from "openxyz/tools"`) and lets the engine evolve independently of the public API.
-- **`templates/openxyz-janitor`**: reference template. `channels/telegram.ts`, `tools/echo.ts`, `skills/prd/`, `AGENTS.md`, `package.json` with a `permissions` block. Depends on `openxyz: workspace:*`.
-- **Turborepo** (`turbo.json`): `build`, `test`, `lint`, `clean`, `dev` task definitions remain for future packages that may need them; `packages/openxyz` currently has no build script (runs source directly).
+- **`packages/openxyz`**: the publishable **CLI + thin facade** that templates (downstream users) depend on. Owns the `openxyz` bin and the re-export surface (`openxyz/tools`, `openxyz/channels/*`, `openxyz/drives/*`, `openxyz/env`). ESM-only. **No build step** — Bun runs TypeScript natively. `bin.openxyz` in `package.json` points directly at `bin/bin.ts` (`#!/usr/bin/env bun`). Subpath exports point at source (`./channels/telegram.ts`) — consumers need Bun. Peer-deps `ai@^6` and `@ai-sdk/provider@^3`. Keep this package small — real work lives in `@openxyz/runtime` and the vendor packages.
+- **`packages/openxyz-runtime`** (`@openxyz/runtime`): the **engine**. Agent loop (`openxyz.ts`), tool registry/discovery, VFS (`just-bash` + `MountableFs`), `Drive` interface + `HomeDrive`, reusable FS adapters (`fs/ignored.ts`, `fs/readonly.ts`), `Channel` abstract class, session store, streaming. Scoped package, internal to the openxyz family. Bare engine — ships no default agents, no default models, no default drives beyond `HomeDrive`. Templates do **not** import from here directly — they import from `openxyz`, which re-exports whatever runtime surface the template needs.
+- **Vendor packages** (`@openxyz/<vendor>` ↔ `packages/openxyz-<vendor>/`): one package per external integration (Telegram, GitHub, Slack, Notion, ...). Subpath exports by kind: `@openxyz/telegram/channel`, `@openxyz/github/drive`, etc. A vendor can ship any mix of `/channel`, `/drive`, `/tools`, `/model` as its surface. Popular vendors (Telegram currently) get re-exported via `openxyz/channels/<vendor>` + `openxyz/drives/<vendor>` so templates don't need an extra install; less-popular ones users add explicitly. Naming convention and rationale in `mnemonic/075`.
+- **Templates** (`templates/<name>/`): reference projects. `openxyz-janitor` is the dogfood chief-of-staff. `pkbm-agent` and `group-agent` exercise other shapes. Each template depends on `openxyz: workspace:*`.
+- **Turborepo** (`turbo.json`): `build`, `test`, `lint`, `clean`, `dev` tasks. `packages/openxyz` has no build script (runs source). Templates use `build: openxyz build` which codegens a Vercel function bundle into `.vercel/output/`. Filter via `bun run build --filter='./templates/*'` or `--filter=<template-name>`.
 
 ## Commands
 
 ```bash
-bun install              # Install dependencies
-bun run test             # Run all tests (turbo)
-bun run lint             # Lint all packages with --fix (turbo)
-bun run format           # Format all files with Prettier
-bun x prettier --check . # Check formatting without writing
+bun install                                # Install dependencies
+bun run test                               # Run all tests (turbo)
+bun run lint                               # Lint all packages with --fix (turbo)
+bun run format                             # Format all files with Prettier
+bun x prettier --check .                   # Check formatting without writing
 
-# Run the CLI from a template (no build — Bun runs .ts directly)
-cd templates/openxyz-janitor && bun start
+# Template builds via turbo filter (no cd needed)
+bun run build --filter='./templates/*'     # Build every template's .vercel/output
+bun run build --filter=openxyz-janitor     # Build a single template
 ```
+
+Run a template's dev loop with `bun --filter=<template-name> start` (or `cd templates/<name> && bun start` if the user's shell permissions allow `cd`).
 
 ## Architecture
 
@@ -72,25 +76,38 @@ A template is a project directory the user runs `openxyz start` from. Filename =
 
 ```
 my-template/
-├── package.json              # deps: openxyz + adapter packages
+├── package.json              # deps: openxyz + vendor packages (@openxyz/telegram, @openxyz/github, ...)
 ├── AGENTS.md                 # project-specific instructions for the AI
-├── .env.local                # TELEGRAM_BOT_TOKEN, etc.
-├── channels/                 # transport adapters (telegram, slack, ...)
-│   └── telegram.ts           # export default createTelegramAdapter()
-├── tools/                    # custom AI tools (AI SDK shape)
+├── .env.local                # TELEGRAM_BOT_TOKEN, GITHUB_TOKEN, etc.
+├── channels/                 # transport adapters (telegram, slack, ...) — mount sessions
+│   └── telegram.ts           # export default new TelegramChannel({ ... })
+├── tools/                    # custom AI tools (AI SDK `tool()` shape)
 │   └── echo.ts               # default export = tool({ description, inputSchema, execute })
+├── drives/                   # external filesystems mounted at /mnt/<name>/ (optional)
+│   └── my-repo.ts            # export default new GitHubDrive({ owner, repo, token, permission })
 ├── skills/                   # custom skills (optional)
 │   └── my-skill/SKILL.md
-└── agents/                   # custom agents (optional)
+├── agents/                   # custom agents (optional)
+└── models/                   # custom model providers (optional; falls back to openxyz's `auto.ts`)
 ```
+
+Filename = identity:
+
+- `channels/telegram.ts` → channel type `telegram`, sessions `telegram:<user-id>`
+- `tools/echo.ts` → tool id `echo`
+- `drives/my-repo.ts` → drive mounted at `/mnt/my-repo/`
+- `agents/researcher.md` → agent id `researcher`
 
 ### Terminology (important — don't mix up)
 
 - **Template** = project directory with the conventions above
-- **Harness** = the self-modifying config layer (tools/skills/agents/channels) the AI can edit
+- **Runtime** = `@openxyz/runtime` — the bare engine (agent loop, VFS, drive/channel interfaces, session store). Historical docs/mnemonic entries may call this "harness"; new work uses "runtime".
+- **Facade** = `openxyz` — the CLI (`openxyz build`/`openxyz start`) + re-export surface templates import from.
+- **Vendor package** = `@openxyz/<vendor>` — external integration (Telegram, GitHub, ...). Subpaths: `/channel`, `/drive`, `/tools`, `/model`.
 - **Channel** = transport type (telegram, slack, terminal) — lives in `channels/`. A channel is the parent container.
-- **Session** = one conversation context, child of a channel. One channel contains many sessions (one per user/thread). Naming: `<channel>:<id>`, e.g. `telegram:7601560926`.
-- **VFS** = virtual filesystem the AI lives inside (`/home/openxyz/` + `/mnt/*`)
+- **Session** = one conversation context, child of a channel. One channel contains many sessions. Naming: `<channel>:<id>`, e.g. `telegram:7601560926`.
+- **Drive** = a mounted filesystem with optional `refresh()`/`commit()` lifecycle hooks. `HomeDrive` at `/home/openxyz` is always mounted; templates can add drives under `/mnt/<name>/` via `drives/<name>.ts`.
+- **VFS** = the agent's filesystem (`/home/openxyz/` + `/mnt/*`). Never describe it as "virtual" in AI-facing tool descriptions.
 
 ## Patterns to learn from
 
@@ -124,6 +141,9 @@ Reliable AI agent loops built on AI SDK `streamText()`. Essentials:
 3. chat-sdk thread handlers must be fire-and-forget. Holding the lock across `await` causes `LockError` on concurrent messages.
 4. Telegram markdown posts need a plain-text fallback — the parser rejects some outputs.
 5. `MountableFs` options shape is `{ mounts: [{ mountPoint, filesystem }] }`, not `{ mounts: { path: fs } }`.
+6. `OverlayFs` writes are **copy-on-write / in-memory** — they don't hit the underlying disk. For writable drives whose edits must be visible to a downstream process (git, archiver, sync daemon), use `ReadWriteFs`. See mnemonic/077.
+7. `MountableFs` strips the `mountPoint` before forwarding to the inner FS — keys in `InMemoryFs` must be relative to mount root (`/AGENTS.md`), not absolute VFS paths (`/home/openxyz/AGENTS.md`). See mnemonic/072.
+8. `@vercel/functions.waitUntil` is broken on Vercel's Bun runtime (short grace period, not full lifetime extension). Inline `Promise.allSettled(tasks)` before the response as the working fallback. See mnemonic/069–070.
 
 ## Code style
 
