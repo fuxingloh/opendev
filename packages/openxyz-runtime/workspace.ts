@@ -1,6 +1,6 @@
 import { ReadWriteFs, OverlayFs, type IFileSystem } from "just-bash";
-import type { Drive, Permission } from "../drive.ts";
-import { IgnoredFs } from "../fs/ignored.ts";
+import type { Drive, Permission } from "./drive.ts";
+import { IgnoredFs } from "./fs/ignored.ts";
 
 /**
  * Paths hidden from the agent — secrets (`.env*`) and local build/deploy
@@ -19,11 +19,11 @@ const IGNORES = ["**/.env*", ".openxyz", ".vercel"];
  * `IgnoredFs` to hide secrets and local build output.
  *
  * `openxyz build` intercepts this module via a Bun plugin and swaps it for
- * a generated variant whose `HomeDrive` wraps an `InMemoryFs` pre-populated
+ * a generated variant whose `WorkspaceDrive` wraps an `InMemoryFs` pre-populated
  * with the packed template snapshot (already filtered at scan time — see
  * `packages/openxyz/bin/scan.ts`). See `packages/openxyz/bin/cmds/build.ts`.
  */
-export class HomeDrive implements Drive {
+export class WorkspaceDrive implements Drive {
   readonly #fs: IFileSystem;
 
   constructor(

@@ -34,7 +34,7 @@ export type OpenXyzRuntime = {
    */
   models: Record<string, Model>;
   /**
-   * Mounted drives keyed by absolute VFS mount path (`/home/openxyz`,
+   * Mounted drives keyed by absolute VFS mount path (`/workspace`,
    * `/mnt/notes`, …). Runtime calls `refresh()` on each drive before an
    * agent turn and `commit()` after `thread.post(...)` settles.
    * `FilesystemTools` consumes this record (filtered by the agent's

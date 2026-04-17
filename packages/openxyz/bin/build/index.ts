@@ -5,7 +5,7 @@ import { scanDir, type OpenXyzFiles } from "../scan";
 import { generateEntrypoint } from "./entrypoint";
 import { FAVICON_SVG, generateFaviconIco } from "./favicon";
 import { virtualRuntimePlugin } from "./plugins/virtual-runtime";
-import { inMemoryHomePlugin } from "./plugins/in-memory-home";
+import { inMemoryWorkspacePlugin } from "./plugins/in-memory-workspace";
 
 export async function buildVercel(cwd: string): Promise<void> {
   const files = await scanDir(cwd);
@@ -40,7 +40,7 @@ export async function buildVercel(cwd: string): Promise<void> {
       "process.env.NODE_ENV": JSON.stringify("production"),
       "process.env.OPENXYZ_BACKEND": JSON.stringify("vercel"),
     },
-    plugins: [inMemoryHomePlugin(cwd, files.files), virtualRuntimePlugin()],
+    plugins: [inMemoryWorkspacePlugin(cwd, files.files), virtualRuntimePlugin()],
   });
 
   if (!result.success) {

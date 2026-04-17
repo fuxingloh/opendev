@@ -18,7 +18,7 @@ export async function generateEntrypoint(
   defaultAgents: Record<string, string>,
 ): Promise<string> {
   const abs = (p: string) => join(scan.cwd, p);
-  const vfsPath = (p: string) => "/home/openxyz/" + p;
+  const vfsPath = (p: string) => "/workspace/" + p;
   // Every generated import path is emitted relative to this build dir so the
   // generated source is portable (no machine-specific absolute paths baked in).
   // `Bun.build` still inlines the content, but the intermediate file is clean.
@@ -44,7 +44,7 @@ export async function generateEntrypoint(
   // at build time below and emit JSON literals. That removes the `yaml`
   // (formerly `gray-matter`) parser from the production bundle entirely.
   // See mnemonic/068 for the gray-matter→yaml crash story.
-  imports.push(`import { OpenXyz, loadChannel, createChatState, waitUntil, HomeDrive } from "openxyz/_runtime";`);
+  imports.push(`import { OpenXyz, loadChannel, createChatState, waitUntil, WorkspaceDrive } from "openxyz/_runtime";`);
 
   const channelEntries: string[] = [];
   Object.entries(t.channels).forEach(([name, path], i) => {
@@ -60,10 +60,10 @@ export async function generateEntrypoint(
     toolEntries.push(`  ${JSON.stringify(name)}: ${id},`);
   });
 
-  // Drives: HomeDrive is always mounted at /home/openxyz (runtime-intercepted
-  // by `inMemoryHomePlugin` for the packed snapshot). Template-provided
+  // Drives: WorkspaceDrive is always mounted at /workspace (runtime-intercepted
+  // by `inMemoryWorkspacePlugin` for the packed snapshot). Template-provided
   // `drives/<name>.ts` files mount at `/mnt/<name>/`.
-  const driveEntries: string[] = [`  "/home/openxyz": new HomeDrive(import.meta.dir, "read-write"),`];
+  const driveEntries: string[] = [`  "/workspace": new WorkspaceDrive(import.meta.dir, "read-write"),`];
   Object.entries(t.drives).forEach(([name, path], i) => {
     const id = `__drive${i}`;
     imports.push(`import ${id} from ${JSON.stringify(toRel(abs(path)))};`);

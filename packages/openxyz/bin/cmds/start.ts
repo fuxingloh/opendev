@@ -5,7 +5,7 @@ import { loadChannel, type Channel } from "@openxyz/runtime/channels";
 import { parseAgent, type AgentDef } from "@openxyz/runtime/agents/factory";
 import { parseSkill, type SkillDef } from "@openxyz/runtime/tools/skill";
 import { createChatState } from "@openxyz/runtime/databases";
-import { HomeDrive } from "@openxyz/runtime/drives/home";
+import { WorkspaceDrive } from "@openxyz/runtime/workspace";
 import type { Drive } from "@openxyz/runtime/drive";
 import { Command } from "commander";
 import { scanDir, type OpenXyzFiles } from "../scan";
@@ -105,10 +105,10 @@ async function loadRuntime(scan: OpenXyzFiles): Promise<OpenXyzRuntime> {
   const mds: { agents?: string } = {};
   if (t.mds.agents) mds.agents = await Bun.file(abs(t.mds.agents)).text();
 
-  // Drives: HomeDrive is always mounted at /home/openxyz. Template-provided
+  // Drives: WorkspaceDrive is always mounted at /workspace. Template-provided
   // `drives/<name>.ts` files mount at `/mnt/<name>/`.
   const drives: Record<string, Drive> = {
-    "/home/openxyz": new HomeDrive(scan.cwd, "read-write"),
+    "/workspace": new WorkspaceDrive(scan.cwd, "read-write"),
   };
   for (const [name, path] of Object.entries(t.drives)) {
     const mod = await import(abs(path));

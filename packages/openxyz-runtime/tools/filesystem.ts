@@ -27,9 +27,9 @@ export class FilesystemTools {
    * Build the agent's filesystem from pre-connected drives + a per-agent
    * permission config.
    *
-   * - `drives` is keyed by absolute mount path (`/home/openxyz`, `/mnt/notes`,
-   *   …). The caller pre-instantiates every drive — including `HomeDrive` at
-   *   `/home/openxyz`, which is always present — and has already called
+   * - `drives` is keyed by absolute mount path (`/workspace`, `/mnt/notes`,
+   *   …). The caller pre-instantiates every drive — including `WorkspaceDrive` at
+   *   `/workspace`, which is always present — and has already called
    *   `refresh()` on each.
    * - `config` decides which paths this agent can see and at what permission.
    *   String form applies uniformly; record form gates per mount path and
@@ -50,7 +50,7 @@ export class FilesystemTools {
     }
 
     const fs = new MountableFs({ mounts: configs });
-    this.#bash = new Bash({ fs, cwd: "/home/openxyz", python: true, javascript: true });
+    this.#bash = new Bash({ fs, cwd: "/workspace", python: true, javascript: true });
   }
 
   tools(): Record<string, Tool> {
@@ -61,10 +61,10 @@ export class FilesystemTools {
         description: [
           "Executes a bash command in a sandboxed shell with optional timeout.",
           "",
-          `All commands run in /home/openxyz (your workspace) by default. Use \`workdir\` to run in a different directory. Prefer \`workdir\` over \`cd <dir> && <command>\`.`,
+          `All commands run in /workspace (your workspace) by default. Use \`workdir\` to run in a different directory. Prefer \`workdir\` over \`cd <dir> && <command>\`.`,
           "",
           "Layout:",
-          `  /home/openxyz/   — your workspace (tools, skills, channels, agents, documents)`,
+          `  /workspace/   — your workspace (tools, skills, channels, agents, documents)`,
           "  /mnt/<name>/     — mounted backends (e.g. gdrive, notion)",
           "",
           "Prefer the purpose-built filesystem tools (`read`, `write`, `edit`, `glob`, `grep`) over bash when the task fits one of them — they return structured output and are cheaper. Reach for `bash` when you need a real shell: piping, scripts, installed binaries, archive handling, process inspection.",
@@ -97,7 +97,7 @@ export class FilesystemTools {
       read: tool({
         description: "Read a file from your workspace or a mounted backend. Returns line-numbered content.",
         inputSchema: z.object({
-          path: z.string().describe(`Absolute path, e.g. /home/openxyz/AGENTS.md`),
+          path: z.string().describe(`Absolute path, e.g. /workspace/AGENTS.md`),
           offset: z.number().optional().describe("Line number to start reading from (1-indexed). Defaults to 1."),
           limit: z.number().optional().describe("Maximum number of lines to return. Defaults to 2000."),
         }),
@@ -124,7 +124,7 @@ export class FilesystemTools {
         }),
         execute: async ({ path, content }) => {
           const parent = path.slice(0, path.lastIndexOf("/"));
-          if (parent && parent !== "") await shell.exec(`mkdir -p "${parent}"`, { cwd: "/home/openxyz" });
+          if (parent && parent !== "") await shell.exec(`mkdir -p "${parent}"`, { cwd: "/workspace" });
           await shell.writeFile(path, content);
           return `wrote ${content.length} bytes to ${path}`;
         },
@@ -164,7 +164,7 @@ export class FilesystemTools {
           pattern: z
             .string()
             .describe("Glob pattern like '**/*.md' or '*.ts'. Matches against file names, not full paths."),
-          cwd: z.string().describe(`Absolute directory path to search under, e.g. /home/openxyz/AGENTS.md`),
+          cwd: z.string().describe(`Absolute directory path to search under, e.g. /workspace/AGENTS.md`),
         }),
         execute: async ({ pattern, cwd }) => {
           const res = await shell.exec(`find . -type f -name "${pattern}"`, { cwd });
@@ -177,7 +177,7 @@ export class FilesystemTools {
         description: "Search file contents for a regex pattern. Returns {file}:{line}:{match} lines.",
         inputSchema: z.object({
           pattern: z.string().describe("Extended regex pattern to search for."),
-          path: z.string().describe(`Absolute directory path to search under, e.g. /home/openxyz/AGENTS.md`),
+          path: z.string().describe(`Absolute directory path to search under, e.g. /workspace/AGENTS.md`),
           glob: z.string().optional().describe("Filter files by glob, e.g. '*.md'. Optional."),
         }),
         execute: async ({ pattern, path, glob }) => {

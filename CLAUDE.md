@@ -47,7 +47,7 @@ Default to AI Gateway model strings (`provider/model`) over direct provider SDK 
 
 - **Root** (`package.json`): Bun workspaces (`packages/*`, `templates/*`) via the `workspaces` field, Turborepo, shared Prettier config (120-char width, `prettier-plugin-packagejson`). Package manager and runtime is **Bun** (not npm/pnpm/yarn). No `engines.node` pin.
 - **`packages/openxyz`**: the publishable **CLI + thin facade** that templates (downstream users) depend on. Owns the `openxyz` bin and the re-export surface (`openxyz/tools`, `openxyz/channels/*`, `openxyz/drives/*`, `openxyz/env`). ESM-only. **No build step** — Bun runs TypeScript natively. `bin.openxyz` in `package.json` points directly at `bin/bin.ts` (`#!/usr/bin/env bun`). Subpath exports point at source (`./channels/telegram.ts`) — consumers need Bun. Peer-deps `ai@^6` and `@ai-sdk/provider@^3`. Keep this package small — real work lives in `@openxyz/runtime` and the vendor packages.
-- **`packages/openxyz-runtime`** (`@openxyz/runtime`): the **engine**. Agent loop (`openxyz.ts`), tool registry/discovery, VFS (`just-bash` + `MountableFs`), `Drive` interface + `HomeDrive`, reusable FS adapters (`fs/ignored.ts`, `fs/readonly.ts`), `Channel` abstract class, session store, streaming. Scoped package, internal to the openxyz family. Bare engine — ships no default agents, no default models, no default drives beyond `HomeDrive`. Templates do **not** import from here directly — they import from `openxyz`, which re-exports whatever runtime surface the template needs.
+- **`packages/openxyz-runtime`** (`@openxyz/runtime`): the **engine**. Agent loop (`openxyz.ts`), tool registry/discovery, VFS (`just-bash` + `MountableFs`), `Drive` interface + `WorkspaceDrive`, reusable FS adapters (`fs/ignored.ts`, `fs/readonly.ts`), `Channel` abstract class, session store, streaming. Scoped package, internal to the openxyz family. Bare engine — ships no default agents, no default models, no default drives beyond `WorkspaceDrive`. Templates do **not** import from here directly — they import from `openxyz`, which re-exports whatever runtime surface the template needs.
 - **Vendor packages** (`@openxyz/<vendor>` ↔ `packages/openxyz-<vendor>/`): one package per external integration (Telegram, GitHub, Slack, Notion, ...). Subpath exports by kind: `@openxyz/telegram/channel`, `@openxyz/github/drive`, etc. A vendor can ship any mix of `/channel`, `/drive`, `/tools`, `/model` as its surface. Popular vendors (Telegram currently) get re-exported via `openxyz/channels/<vendor>` + `openxyz/drives/<vendor>` so templates don't need an extra install; less-popular ones users add explicitly. Naming convention and rationale in `mnemonic/075`.
 - **Templates** (`templates/<name>/`): reference projects. `openxyz-janitor` is the dogfood chief-of-staff. `pkbm-agent` and `group-agent` exercise other shapes. Each template depends on `openxyz: workspace:*`.
 - **Turborepo** (`turbo.json`): `build`, `test`, `lint`, `clean`, `dev` tasks. `packages/openxyz` has no build script (runs source). Templates use `build: openxyz build` which codegens a Vercel function bundle into `.vercel/output/`. Filter via `bun run build --filter='./templates/*'` or `--filter=<template-name>`.
@@ -106,8 +106,8 @@ Filename = identity:
 - **Vendor package** = `@openxyz/<vendor>` — external integration (Telegram, GitHub, ...). Subpaths: `/channel`, `/drive`, `/tools`, `/model`.
 - **Channel** = transport type (telegram, slack, terminal) — lives in `channels/`. A channel is the parent container.
 - **Session** = one conversation context, child of a channel. One channel contains many sessions. Naming: `<channel>:<id>`, e.g. `telegram:7601560926`.
-- **Drive** = a mounted filesystem with optional `refresh()`/`commit()` lifecycle hooks. `HomeDrive` at `/home/openxyz` is always mounted; templates can add drives under `/mnt/<name>/` via `drives/<name>.ts`.
-- **VFS** = the agent's filesystem (`/home/openxyz/` + `/mnt/*`). Never describe it as "virtual" in AI-facing tool descriptions.
+- **Drive** = a mounted filesystem with optional `refresh()`/`commit()` lifecycle hooks. `WorkspaceDrive` at `/workspace` is always mounted; templates can add drives under `/mnt/<name>/` via `drives/<name>.ts`.
+- **VFS** = the agent's filesystem (`/workspace/` + `/mnt/*`). Never describe it as "virtual" in AI-facing tool descriptions.
 
 ## Patterns to learn from
 
@@ -142,7 +142,7 @@ Reliable AI agent loops built on AI SDK `streamText()`. Essentials:
 4. Telegram markdown posts need a plain-text fallback — the parser rejects some outputs.
 5. `MountableFs` options shape is `{ mounts: [{ mountPoint, filesystem }] }`, not `{ mounts: { path: fs } }`.
 6. `OverlayFs` writes are **copy-on-write / in-memory** — they don't hit the underlying disk. For writable drives whose edits must be visible to a downstream process (git, archiver, sync daemon), use `ReadWriteFs`. See mnemonic/077.
-7. `MountableFs` strips the `mountPoint` before forwarding to the inner FS — keys in `InMemoryFs` must be relative to mount root (`/AGENTS.md`), not absolute VFS paths (`/home/openxyz/AGENTS.md`). See mnemonic/072.
+7. `MountableFs` strips the `mountPoint` before forwarding to the inner FS — keys in `InMemoryFs` must be relative to mount root (`/AGENTS.md`), not absolute VFS paths (`/workspace/AGENTS.md`). See mnemonic/072.
 8. `@vercel/functions.waitUntil` is broken on Vercel's Bun runtime (short grace period, not full lifetime extension). Inline `Promise.allSettled(tasks)` before the response as the working fallback. See mnemonic/069–070.
 
 ## Code style

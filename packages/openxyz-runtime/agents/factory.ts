@@ -194,7 +194,7 @@ export class AgentFactory {
 
     const fsConfig = def.filesystem;
     const access = typeof fsConfig === "string" ? fsConfig : (fsConfig?.["harness"] ?? "read-write");
-    parts.push(["## Environment", "", `- Home: /home/openxyz`, `- Filesystem: ${access}`].join("\n"));
+    parts.push(["## Environment", "", `- Workspace: /workspace`, `- Filesystem: ${access}`].join("\n"));
 
     if (def.content) {
       parts.push(def.content);
