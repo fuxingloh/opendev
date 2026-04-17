@@ -2,11 +2,11 @@ import { createTelegramAdapter, type TelegramAdapterConfig, type TelegramRawMess
 import { type AiMessage, type AiMessagePart, type Message, toAiMessages } from "chat";
 import type { Adapter as ChatSdkAdapter } from "chat";
 import type { ModelMessage } from "ai";
-import { Channel, type ReplyAction, type Thread } from "@openxyz/harness/channels";
+import { Channel, type ReplyAction, type Thread } from "@openxyz/runtime/channels";
 import { backend } from "../backend";
 
-export type { Thread, Message, ReplyAction } from "@openxyz/harness/channels";
-export { Channel } from "@openxyz/harness/channels";
+export type { Thread, Message, ReplyAction } from "@openxyz/runtime/channels";
+export { Channel } from "@openxyz/runtime/channels";
 
 export type TelegramConfig = TelegramAdapterConfig & {
   botToken: string;

@@ -19,7 +19,7 @@
     "@ai-sdk/amazon-bedrock": "4.0.93",
     "@ai-sdk/openai-compatible": "2.0.41",
     "@chat-adapter/telegram": "catalog:",
-    "@openxyz/harness": "workspace:*",
+    "@openxyz/runtime": "workspace:*",
     "@vercel/functions": "^2",
     "chat": "catalog:",
     "commander": "^14.0.3",

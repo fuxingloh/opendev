@@ -17,8 +17,8 @@ export type Model = {
 };
 
 /**
- * Materialized template shape passed into the harness. Scanning lives in the
- * `openxyz` CLI layer — harness receives everything already parsed.
+ * Materialized template shape passed into the runtime. Scanning lives in the
+ * `openxyz` CLI layer — runtime receives everything already parsed.
  */
 export type OpenXyzRuntime = {
   cwd: string;

@@ -22,7 +22,7 @@
         "@ai-sdk/amazon-bedrock": "4.0.93",
         "@ai-sdk/openai-compatible": "2.0.41",
         "@chat-adapter/telegram": "catalog:",
-        "@openxyz/harness": "workspace:*",
+        "@openxyz/runtime": "workspace:*",
         "@vercel/functions": "^2",
         "chat": "catalog:",
         "commander": "^14.0.3",
@@ -37,8 +37,8 @@
         "ai": "catalog:",
       },
     },
-    "packages/openxyz-harness": {
-      "name": "@openxyz/harness",
+    "packages/openxyz-runtime": {
+      "name": "@openxyz/runtime",
       "version": "0.0.0",
       "dependencies": {
         "@ai-sdk/amazon-bedrock": "4.0.93",
@@ -201,7 +201,7 @@
 
     "@opentelemetry/api": ["@opentelemetry/api@1.9.0", "", {}, "sha512-3giAOQvZiH5F9bMlMiv8+GSPMeqg0dbaeo58/0SlA9sxSqZhnUtxzX9/2FzyhS9sWQf5S0GJE0AKBrFqjpeYcg=="],
 
-    "@openxyz/harness": ["@openxyz/harness@workspace:packages/openxyz-harness"],
+    "@openxyz/runtime": ["@openxyz/runtime@workspace:packages/openxyz-runtime"],
 
     "@redis/bloom": ["@redis/bloom@5.12.1", "", { "peerDependencies": { "@redis/client": "^5.12.1" } }, "sha512-PUUfv+ms7jgPSBVoo/DN4AkPHj4D5TZSd6SbJX7egzBplkYUcKmHRE8RKia7UtZ8bSQbLguLvxVO+asKtQfZWA=="],
 

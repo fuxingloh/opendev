@@ -3,8 +3,8 @@ import { Command } from "commander";
 import { existsSync, mkdirSync, rmSync, cpSync } from "node:fs";
 import { resolve, relative, join } from "node:path";
 import sharp from "sharp";
-import { parseAgent } from "@openxyz/harness/agents/factory";
-import { parseSkill } from "@openxyz/harness/tools/skill";
+import { parseAgent } from "@openxyz/runtime/agents/factory";
+import { parseSkill } from "@openxyz/runtime/tools/skill";
 import { scanDir, type OpenXyzFiles } from "../scan";
 
 const FAVICON_SVG = `<svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -130,7 +130,7 @@ async function generateEntrypoint(
   // at build time below and emit JSON literals. That removes the `yaml`
   // (formerly `gray-matter`) parser from the production bundle entirely.
   // See mnemonic/068 for the gray-matter→yaml crash story.
-  imports.push(`import { OpenXyz, loadChannel, createChatState, waitUntil } from "openxyz/_harness";`);
+  imports.push(`import { OpenXyz, loadChannel, createChatState, waitUntil } from "openxyz/_runtime";`);
 
   const channelEntries: string[] = [];
   Object.entries(t.channels).forEach(([name, path], i) => {
@@ -270,7 +270,7 @@ async function buildVercel(cwd: string): Promise<void> {
   mkdirSync(funcDir, { recursive: true });
 
   const homePlugin = inMemoryHomePlugin(cwd, files.files);
-  const harnessPlugin = virtualHarnessPlugin();
+  const runtimePlugin = virtualRuntimePlugin();
 
   const result = await Bun.build({
     entrypoints: [entrypoint],
@@ -283,7 +283,7 @@ async function buildVercel(cwd: string): Promise<void> {
       "process.env.NODE_ENV": JSON.stringify("production"),
       "process.env.OPENXYZ_BACKEND": JSON.stringify("vercel"),
     },
-    plugins: [homePlugin, harnessPlugin],
+    plugins: [homePlugin, runtimePlugin],
   });
 
   if (!result.success) {
@@ -348,36 +348,36 @@ async function buildVercel(cwd: string): Promise<void> {
 }
 
 /**
- * Bun plugin that materializes `openxyz/_harness` — a virtual module that
- * only exists during `openxyz build`. It re-exports the harness surface the
+ * Bun plugin that materializes `openxyz/_runtime` — a virtual module that
+ * only exists during `openxyz build`. It re-exports the runtime surface the
  * generated entrypoint needs.
  *
- * The template depends on `openxyz`, not `@openxyz/harness`, so we can't
- * import `@openxyz/harness/*` directly from the generated file. The virtual
+ * The template depends on `openxyz`, not `@openxyz/runtime`, so we can't
+ * import `@openxyz/runtime/*` directly from the generated file. The virtual
  * module sits inside the `openxyz` package tree (`resolveDir`), where
- * `@openxyz/harness` is a declared dep and therefore resolvable.
+ * `@openxyz/runtime` is a declared dep and therefore resolvable.
  */
-function virtualHarnessPlugin(): BunPlugin {
-  // Resolve harness by absolute path — Bun's virtual-namespace loader has
+function virtualRuntimePlugin(): BunPlugin {
+  // Resolve runtime by absolute path — Bun's virtual-namespace loader has
   // uneven support for bare subpath resolution past the top level. Absolute
   // paths bypass package resolution entirely and always work.
-  const harnessRoot = new URL("../../../openxyz-harness/", import.meta.url).pathname;
+  const runtimeRoot = new URL("../../../openxyz-runtime/", import.meta.url).pathname;
   const openxyzRoot = new URL("../../", import.meta.url).pathname;
   const vercelFunctions = Bun.resolveSync("@vercel/functions", openxyzRoot);
 
   return {
-    name: "openxyz-virtual-harness",
+    name: "openxyz-virtual-runtime",
     setup(build) {
-      build.onResolve({ filter: /^openxyz\/_harness$/ }, (args) => ({
+      build.onResolve({ filter: /^openxyz\/_runtime$/ }, (args) => ({
         path: args.path,
-        namespace: "openxyz-harness",
+        namespace: "openxyz-runtime",
       }));
-      build.onLoad({ filter: /.*/, namespace: "openxyz-harness" }, () => ({
+      build.onLoad({ filter: /.*/, namespace: "openxyz-runtime" }, () => ({
         loader: "ts",
         contents: [
-          `export { OpenXyz } from ${JSON.stringify(harnessRoot + "openxyz.ts")};`,
-          `export { loadChannel } from ${JSON.stringify(harnessRoot + "channels.ts")};`,
-          `export { createChatState } from ${JSON.stringify(harnessRoot + "databases/index.ts")};`,
+          `export { OpenXyz } from ${JSON.stringify(runtimeRoot + "openxyz.ts")};`,
+          `export { loadChannel } from ${JSON.stringify(runtimeRoot + "channels.ts")};`,
+          `export { createChatState } from ${JSON.stringify(runtimeRoot + "databases/index.ts")};`,
           `export { waitUntil } from ${JSON.stringify(vercelFunctions)};`,
         ].join("\n"),
       }));
@@ -386,12 +386,12 @@ function virtualHarnessPlugin(): BunPlugin {
 }
 
 /**
- * Bun plugin that replaces `@openxyz/harness/drives/home` with a generated
+ * Bun plugin that replaces `@openxyz/runtime/drives/home` with a generated
  * module. The generated variant wires an `InMemoryFs` pre-populated with the
  * template's file contents, so the deployed function serves `/home/openxyz`
  * straight from the bundle — no disk reads, no `node_modules` shipped.
  *
- * Works by resolving the harness's `drives/home` file path from the build cwd
+ * Works by resolving the runtime's `drives/home` file path from the build cwd
  * and matching that absolute path in `onLoad`. The replacement text-imports
  * each template file so Bun.build inlines the raw content as static strings.
  */
@@ -399,10 +399,10 @@ function inMemoryHomePlugin(cwd: string, vfs: string[]): BunPlugin {
   return {
     name: "openxyz-home-intercept",
     setup(build) {
-      // Matches the harness's drives/home source on disk — workspaces resolve
-      // to real paths (`packages/openxyz-harness/drives/home.ts`), symlinked
+      // Matches the runtime's drives/home source on disk — workspaces resolve
+      // to real paths (`packages/openxyz-runtime/drives/home.ts`), symlinked
       // installs resolve similarly.
-      const filter = /openxyz-harness\/drives\/home\.(ts|js)$/;
+      const filter = /openxyz-runtime\/drives\/home\.(ts|js)$/;
 
       build.onLoad({ filter }, async () => {
         // Inline file contents as string literals. Text imports

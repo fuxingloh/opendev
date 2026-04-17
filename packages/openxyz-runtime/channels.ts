@@ -23,7 +23,7 @@ export type ReplyAction = {
  *
  * `this.adapter` is the chat-sdk `Adapter` — composed, not inherited. It owns
  * platform plumbing (webhooks, polling, raw-message parsing). The methods on
- * this class are the harness-level hooks templates override.
+ * this class are the runtime-level hooks templates override.
  */
 export abstract class Channel<Raw = unknown> {
   abstract readonly adapter: ChatSdkAdapter;
@@ -31,7 +31,7 @@ export abstract class Channel<Raw = unknown> {
   /**
    * Environment frame — prepended on top, do not use unstable data.
    * Use for values that change per-request (thread name, etc.). Session-scoped.
-   * Return lines; the harness joins with `\n` and wraps into a system message.
+   * Return lines; the runtime joins with `\n` and wraps into a system message.
    */
   abstract environment(thread: Thread, message: Message<Raw>): Promise<string[]>;
 

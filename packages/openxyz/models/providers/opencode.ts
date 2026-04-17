@@ -1,5 +1,5 @@
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
-import type { Model } from "@openxyz/harness/openxyz";
+import type { Model } from "@openxyz/runtime/openxyz";
 import systemPrompt from "../prompts/system.md" with { type: "text" };
 
 // opencode.ai's hosted OpenAI-compatible gateway (mnemonic/025).

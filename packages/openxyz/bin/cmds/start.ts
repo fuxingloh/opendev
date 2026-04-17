@@ -1,10 +1,10 @@
 import { join } from "node:path";
 import type { Tool } from "ai";
-import { OpenXyz, type Model, type OpenXyzRuntime } from "@openxyz/harness/openxyz";
-import { loadChannel, type Channel } from "@openxyz/harness/channels";
-import { parseAgent, type AgentDef } from "@openxyz/harness/agents/factory";
-import { parseSkill, type SkillDef } from "@openxyz/harness/tools/skill";
-import { createChatState } from "@openxyz/harness/databases";
+import { OpenXyz, type Model, type OpenXyzRuntime } from "@openxyz/runtime/openxyz";
+import { loadChannel, type Channel } from "@openxyz/runtime/channels";
+import { parseAgent, type AgentDef } from "@openxyz/runtime/agents/factory";
+import { parseSkill, type SkillDef } from "@openxyz/runtime/tools/skill";
+import { createChatState } from "@openxyz/runtime/databases";
 import { Command } from "commander";
 import { scanDir, type OpenXyzFiles } from "../scan";
 

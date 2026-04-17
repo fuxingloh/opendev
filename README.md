@@ -15,7 +15,7 @@ bun start
 ## Layout
 
 - `packages/openxyz` — CLI + thin facade (`openxyz/tools`, `openxyz/channels`)
-- `packages/openxyz-harness` — engine (agent loop, tools, VFS, channel bridge)
+- `packages/openxyz-runtime` — engine (agent loop, tools, VFS, channel bridge)
 - `templates/openxyz-janitor` — reference template, dogfooded as our chief-of-staff
 
 ## Template shape

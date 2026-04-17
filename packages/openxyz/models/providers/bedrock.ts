@@ -1,6 +1,6 @@
 import { bedrock as aws } from "@ai-sdk/amazon-bedrock";
 import { wrapLanguageModel } from "ai";
-import type { Model } from "@openxyz/harness/openxyz";
+import type { Model } from "@openxyz/runtime/openxyz";
 import { cacheMiddleware } from "./_cache";
 import systemPrompt from "../prompts/system.md" with { type: "text" };
 

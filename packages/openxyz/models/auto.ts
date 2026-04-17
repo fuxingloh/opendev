@@ -1,4 +1,4 @@
-import type { Model } from "@openxyz/harness/openxyz";
+import type { Model } from "@openxyz/runtime/openxyz";
 
 /**
  * Picks a provider at call time based on `OPENXYZ_MODEL`, e.g.:

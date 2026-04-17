@@ -1,5 +1,5 @@
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
-import type { Model } from "@openxyz/harness/openxyz";
+import type { Model } from "@openxyz/runtime/openxyz";
 import systemPrompt from "../prompts/system.md" with { type: "text" };
 
 // Vercel AI Gateway — routes provider-prefixed model ids (e.g. "anthropic/claude-sonnet-4-5").
