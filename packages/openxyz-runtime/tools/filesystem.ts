@@ -2,8 +2,8 @@ import { Bash, MountableFs, type MountConfig } from "just-bash";
 import { tool } from "ai";
 import type { Tool } from "ai";
 import { z } from "zod";
-import { HomeDrive } from "../drives/home";
-import type { Permission } from "../drives/drive.ts";
+import type { Drive, Permission } from "../drives/drive.ts";
+import { ReadOnlyFs } from "../drives/readonly-fs";
 
 const MAX_BYTES = 50_000;
 
@@ -16,25 +16,40 @@ export const FilesystemConfigSchema = z
 export type FilesystemConfig = z.infer<typeof FilesystemConfigSchema>;
 
 function getMountPermission(mountPath: string, config: FilesystemConfig): Permission | undefined {
-  if (typeof config === "string") {
-    return config;
-  }
+  if (typeof config === "string") return config;
   return config[mountPath];
 }
 
 export class FilesystemTools {
   readonly #bash: Bash;
 
-  constructor(cwd: string, config: FilesystemConfig) {
-    const mounts: MountConfig[] = [];
-    const homePermission = getMountPermission("/home/openxyz", config);
-    if (homePermission) {
-      mounts.push(new HomeDrive(cwd, homePermission).mountConfig("/home/openxyz"));
+  /**
+   * Build the agent's filesystem from pre-connected drives + a per-agent
+   * permission config.
+   *
+   * - `drives` is keyed by absolute mount path (`/home/openxyz`, `/mnt/notes`,
+   *   …). The caller pre-instantiates every drive — including `HomeDrive` at
+   *   `/home/openxyz`, which is always present — and has already called
+   *   `refresh()` on each.
+   * - `config` decides which paths this agent can see and at what permission.
+   *   String form applies uniformly; record form gates per mount path and
+   *   drops unlisted paths.
+   *
+   * When the config says a mount is `read-only` but the drive itself is
+   * read-write capable, we wrap in `ReadOnlyFs` to enforce the agent's
+   * permission without mutating the drive's own state.
+   */
+  constructor(drives: Record<string, Drive>, config: FilesystemConfig) {
+    const configs: MountConfig[] = [];
+    for (const [mountPoint, drive] of Object.entries(drives)) {
+      const perm = getMountPermission(mountPoint, config);
+      if (perm === undefined) continue;
+      const inner = drive.fs();
+      const filesystem = perm === "read-only" ? new ReadOnlyFs(inner) : inner;
+      configs.push({ mountPoint, filesystem });
     }
 
-    // TODO: mount /mnt/* paths from perms when external mounts are implemented
-
-    const fs = new MountableFs({ mounts: mounts });
+    const fs = new MountableFs({ mounts: configs });
     this.#bash = new Bash({ fs, cwd: "/home/openxyz", python: true, javascript: true });
   }
 

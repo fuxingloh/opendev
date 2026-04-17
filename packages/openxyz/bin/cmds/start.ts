@@ -5,6 +5,8 @@ import { loadChannel, type Channel } from "@openxyz/runtime/channels";
 import { parseAgent, type AgentDef } from "@openxyz/runtime/agents/factory";
 import { parseSkill, type SkillDef } from "@openxyz/runtime/tools/skill";
 import { createChatState } from "@openxyz/runtime/databases";
+import { HomeDrive } from "@openxyz/runtime/drives/home";
+import type { Drive } from "@openxyz/runtime/drives/drive";
 import { Command } from "commander";
 import { scanDir, type OpenXyzFiles } from "../scan";
 
@@ -103,7 +105,21 @@ async function loadRuntime(scan: OpenXyzFiles): Promise<OpenXyzRuntime> {
   const mds: { agents?: string } = {};
   if (t.mds.agents) mds.agents = await Bun.file(abs(t.mds.agents)).text();
 
-  return { cwd: scan.cwd, channels, tools, agents, models, skills, mds };
+  // Drives: HomeDrive is always mounted at /home/openxyz. Template-provided
+  // `drives/<name>.ts` files mount at `/mnt/<name>/`.
+  const drives: Record<string, Drive> = {
+    "/home/openxyz": new HomeDrive(scan.cwd, "read-write"),
+  };
+  for (const [name, path] of Object.entries(t.drives)) {
+    const mod = await import(abs(path));
+    if (!mod.default) {
+      console.warn(`[openxyz] drives/${name} has no default export, skipping`);
+      continue;
+    }
+    drives[`/mnt/${name}`] = mod.default as Drive;
+  }
+
+  return { cwd: scan.cwd, channels, tools, agents, models, drives, skills, mds };
 }
 
 /**

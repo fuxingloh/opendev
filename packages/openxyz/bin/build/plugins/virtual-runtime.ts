@@ -31,6 +31,7 @@ export function virtualRuntimePlugin(): BunPlugin {
           `export { OpenXyz } from ${JSON.stringify(runtimeRoot + "openxyz.ts")};`,
           `export { loadChannel } from ${JSON.stringify(runtimeRoot + "channels.ts")};`,
           `export { createChatState } from ${JSON.stringify(runtimeRoot + "databases/index.ts")};`,
+          `export { HomeDrive } from ${JSON.stringify(runtimeRoot + "drives/home.ts")};`,
           `export { waitUntil } from ${JSON.stringify(vercelFunctions)};`,
         ].join("\n"),
       }));

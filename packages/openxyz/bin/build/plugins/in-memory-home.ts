@@ -46,8 +46,8 @@ export function inMemoryHomePlugin(cwd: string, vfs: string[]): BunPlugin {
           `};`,
           ``,
           // Match the real drives/home.ts shape — constructor(cwd, permission),
-          // `mountConfig(mountPoint)` method. FilesystemTools passes cwd and
-          // permission in, and calls `.mountConfig("/home/openxyz")`.
+          // `fs()` method. FilesystemTools calls `.fs()` on each drive to get
+          // the underlying filesystem.
           // The packed snapshot is always read-only: the deployed artifact
           // is immutable, and allowing in-memory writes would be misleading
           // (they persist only within a warm container). ReadOnlyFs throws
@@ -56,10 +56,9 @@ export function inMemoryHomePlugin(cwd: string, vfs: string[]): BunPlugin {
           `  constructor(cwd, permission) {`,
           `    this.cwd = cwd;`,
           `    this.permission = permission;`,
+          `    this._fs = new ReadOnlyFs(new InMemoryFs(files));`,
           `  }`,
-          `  mountConfig(mountPoint) {`,
-          `    return { mountPoint, filesystem: new ReadOnlyFs(new InMemoryFs(files)) };`,
-          `  }`,
+          `  fs() { return this._fs; }`,
           `}`,
         ].join("\n");
 

@@ -2,6 +2,7 @@ import { Chat } from "chat";
 import type { Thread as ChatSdkThread, Message as ChatSdkMessage, StateAdapter } from "chat";
 import type { LanguageModel, Tool } from "ai";
 import type { Channel } from "./channels";
+import type { Drive } from "./drives/drive";
 import { AgentFactory, type AgentDef } from "./agents/factory";
 import type { SkillDef } from "./tools/skill";
 
@@ -32,6 +33,14 @@ export type OpenXyzRuntime = {
    * hands the resolved map over.
    */
   models: Record<string, Model>;
+  /**
+   * Mounted drives keyed by absolute VFS mount path (`/home/openxyz`,
+   * `/mnt/notes`, …). Runtime calls `refresh()` on each drive before an
+   * agent turn and `commit()` after `thread.post(...)` settles.
+   * `FilesystemTools` consumes this record (filtered by the agent's
+   * `filesystem` permission config) to build the per-turn mount table.
+   */
+  drives: Record<string, Drive>;
   skills: SkillDef[];
   /**
    * Template-level markdown artifacts injected into system prompts.
@@ -154,6 +163,25 @@ export class OpenXyz {
 
     if (!reply.agent) return;
 
+    // Pre-turn refresh — drives sync down remote state (git pull, etc.)
+    // before the agent runs. Failures mean the drive is stale; the agent
+    // still runs against whatever state the drive already had, but the user
+    // needs to know we couldn't fetch fresh data (their edits might collide
+    // on `commit` later). Surface with the mount point so they can tell
+    // which drive failed.
+    for (const [mountPoint, drive] of Object.entries(this.runtime.drives)) {
+      if (!drive.refresh) continue;
+      try {
+        await drive.refresh();
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        console.warn(`[openxyz] drive.refresh failed for ${mountPoint}: ${msg}`);
+        await thread
+          .post(`⚠️ \`${mountPoint}\` — ${msg}`)
+          .catch((e) => console.warn(`[openxyz] drive error post failed`, e));
+      }
+    }
+
     const agent = await this.agentFactory.create(reply.agent);
     const [env, context] = await Promise.all([channel.environment(thread, message), channel.context(thread, message)]);
     // Env goes before the conversation, not after — Bedrock (and some other providers) reject system
@@ -168,6 +196,24 @@ export class OpenXyz {
       await thread.post(`⚠️ Error generating reply: ${msg}`).catch((e) => {
         console.error(`[openxyz] fallback error post failed`, e);
       });
+    }
+
+    // Post-turn commit — writable drives flush edits (git commit + push, etc.)
+    // Unlike `refresh`, `commit` failures ARE user-facing: edits didn't make
+    // it to the remote, the user needs to know. Drive throws a descriptive
+    // message; runtime prefixes with the mount point so the user can tell
+    // which drive failed when multiple are mounted.
+    for (const [mountPoint, drive] of Object.entries(this.runtime.drives)) {
+      if (!drive.commit) continue;
+      try {
+        await drive.commit();
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        console.warn(`[openxyz] drive.commit failed for ${mountPoint}: ${msg}`);
+        await thread
+          .post(`⚠️ \`${mountPoint}\` — ${msg}`)
+          .catch((e) => console.warn(`[openxyz] drive error post failed`, e));
+      }
     }
   }
 

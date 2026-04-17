@@ -1,4 +1,4 @@
-import { ReadWriteFs, OverlayFs, type MountConfig } from "just-bash";
+import { ReadWriteFs, OverlayFs, type IFileSystem } from "just-bash";
 import type { Drive, Permission } from "./drive.ts";
 import { IgnoredFs } from "./ignored-fs.ts";
 
@@ -24,16 +24,18 @@ const IGNORES = ["**/.env*", ".openxyz", ".vercel"];
  * `packages/openxyz/bin/scan.ts`). See `packages/openxyz/bin/cmds/build.ts`.
  */
 export class HomeDrive implements Drive {
+  readonly #fs: IFileSystem;
+
   constructor(
     readonly cwd: string,
     readonly permission: Permission,
-  ) {}
-
-  mountConfig(mountPoint: string): MountConfig {
+  ) {
     const inner =
-      this.permission === "read-write"
-        ? new ReadWriteFs({ root: this.cwd })
-        : new OverlayFs({ root: this.cwd, readOnly: true });
-    return { mountPoint, filesystem: new IgnoredFs(IGNORES, inner) };
+      permission === "read-write" ? new ReadWriteFs({ root: cwd }) : new OverlayFs({ root: cwd, readOnly: true });
+    this.#fs = new IgnoredFs(IGNORES, inner);
+  }
+
+  fs(): IFileSystem {
+    return this.#fs;
   }
 }

@@ -145,7 +145,7 @@ export class AgentFactory {
   }
 
   #loadTools(def: AgentDef): Record<string, Tool> {
-    const fs = new FilesystemTools(this.#runtime.cwd, def.filesystem);
+    const fs = new FilesystemTools(this.#runtime.drives, def.filesystem);
     const all: Record<string, Tool> = {
       ...fs.tools(),
       web_fetch,

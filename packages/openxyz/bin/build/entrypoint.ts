@@ -44,7 +44,7 @@ export async function generateEntrypoint(
   // at build time below and emit JSON literals. That removes the `yaml`
   // (formerly `gray-matter`) parser from the production bundle entirely.
   // See mnemonic/068 for the gray-matter→yaml crash story.
-  imports.push(`import { OpenXyz, loadChannel, createChatState, waitUntil } from "openxyz/_runtime";`);
+  imports.push(`import { OpenXyz, loadChannel, createChatState, waitUntil, HomeDrive } from "openxyz/_runtime";`);
 
   const channelEntries: string[] = [];
   Object.entries(t.channels).forEach(([name, path], i) => {
@@ -58,6 +58,16 @@ export async function generateEntrypoint(
     const id = `__tool${i}`;
     imports.push(`import ${id} from ${JSON.stringify(toRel(abs(path)))};`);
     toolEntries.push(`  ${JSON.stringify(name)}: ${id},`);
+  });
+
+  // Drives: HomeDrive is always mounted at /home/openxyz (runtime-intercepted
+  // by `inMemoryHomePlugin` for the packed snapshot). Template-provided
+  // `drives/<name>.ts` files mount at `/mnt/<name>/`.
+  const driveEntries: string[] = [`  "/home/openxyz": new HomeDrive(import.meta.dir, "read-write"),`];
+  Object.entries(t.drives).forEach(([name, path], i) => {
+    const id = `__drive${i}`;
+    imports.push(`import ${id} from ${JSON.stringify(toRel(abs(path)))};`);
+    driveEntries.push(`  ${JSON.stringify(`/mnt/${name}`)}: ${id},`);
   });
 
   // Models: emit only names actually referenced by agents. `auto` is always
@@ -115,6 +125,7 @@ export async function generateEntrypoint(
   body.push(agentEntries.length > 0 ? `  agents: {\n${agentEntries.join("\n")}\n  },` : `  agents: {},`);
   body.push(modelEntries.length > 0 ? `  models: {\n${modelEntries.join("\n")}\n  },` : `  models: {},`);
   body.push(skillEntries.length > 0 ? `  skills: [\n${skillEntries.join("\n")}\n  ],` : `  skills: [],`);
+  body.push(`  drives: {\n${driveEntries.join("\n")}\n  },`);
   const mdEntries = Object.entries(mdIds).map(([slot, id]) => `    ${JSON.stringify(slot)}: ${id},`);
   if (mdEntries.length > 0) body.push(`  mds: {\n${mdEntries.join("\n")}\n  },`);
   body.push(`});`);
