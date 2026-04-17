@@ -63,8 +63,26 @@
         "ai": "catalog:",
       },
     },
+    "templates/group-agent": {
+      "name": "group-agent",
+      "dependencies": {
+        "openxyz": "workspace:*",
+      },
+      "devDependencies": {
+        "typescript": "^6",
+      },
+    },
     "templates/openxyz-janitor": {
       "name": "openxyz-janitor",
+      "dependencies": {
+        "openxyz": "workspace:*",
+      },
+      "devDependencies": {
+        "typescript": "^6",
+      },
+    },
+    "templates/pkbm-agent": {
+      "name": "pkbm-agent",
       "dependencies": {
         "openxyz": "workspace:*",
       },
@@ -341,6 +359,8 @@
 
     "github-from-package": ["github-from-package@0.0.0", "", {}, "sha512-SyHy3T1v2NUXn29OsWdxmK6RwHD+vkj3v8en8AOBZ1wBQ/hCAQ5bAQTD02kW4W9tUp/3Qh6J8r9EvntiyCmOOw=="],
 
+    "group-agent": ["group-agent@workspace:templates/group-agent"],
+
     "husky": ["husky@9.1.7", "", { "bin": { "husky": "bin.js" } }, "sha512-5gs5ytaNjBrh5Ow3zrvdUUY+0VxIuWVL4i9irt6friV+BqdCfmV11CQTWMiBYWHbXhco+J1kHfTOUkePhCDvMA=="],
 
     "ieee754": ["ieee754@1.2.1", "", {}, "sha512-dcyqhDvX1C46lXZcVqCpK+FtMRQVdIMN6/Df5js2zouUsqG7I6sFxitIC+7KYK29KdXOLHdu9zL4sFnoVQnqaA=="],
@@ -498,6 +518,8 @@
     "pgpass": ["pgpass@1.0.5", "", { "dependencies": { "split2": "^4.1.0" } }, "sha512-FdW9r/jQZhSeohs1Z3sI1yxFQNFvMcnmfuj4WBMUTxOrAyLMaTcE1aAMBiTlbMNaXvBCQuVi0R7hd8udDSP7ug=="],
 
     "picomatch": ["picomatch@4.0.4", "", {}, "sha512-QP88BAKvMam/3NxH6vj2o21R6MjxZUAd6nlwAS/pnGvN9IVLocLHxGYIzFhg6fUQ+5th6P4dv4eW9jX3DSIj7A=="],
+
+    "pkbm-agent": ["pkbm-agent@workspace:templates/pkbm-agent"],
 
     "postgres-array": ["postgres-array@2.0.0", "", {}, "sha512-VpZrUqU5A69eQyW2c5CA1jtLecCsN2U/bD6VilrFDWq5+5UIEVO7nazS3TEcHf1zuPYO/sqGvUvW62g86RXZuA=="],
 
