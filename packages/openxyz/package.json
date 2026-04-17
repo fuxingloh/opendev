@@ -17,8 +17,8 @@
   "dependencies": {
     "@ai-sdk/amazon-bedrock": "4.0.93",
     "@ai-sdk/openai-compatible": "2.0.41",
-    "@openxyz/channel-telegram": "workspace:*",
     "@openxyz/runtime": "workspace:*",
+    "@openxyz/telegram": "workspace:*",
     "@vercel/functions": "^2",
     "chat": "catalog:",
     "commander": "^14.0.3",
