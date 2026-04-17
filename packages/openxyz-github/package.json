@@ -1,25 +1,25 @@
 {
   "$schema": "https://json.schemastore.org/package.json",
-  "name": "@openxyz/telegram",
+  "name": "@openxyz/github",
   "version": "0.0.0",
   "license": "MIT",
   "author": "fuxingloh",
   "type": "module",
   "exports": {
-    "./channel": "./channel.ts"
+    "./drive": "./drive.ts"
   },
   "files": [
-    "channel.ts"
+    "drive.ts"
   ],
   "dependencies": {
-    "@chat-adapter/telegram": "catalog:",
     "@openxyz/runtime": "workspace:*",
-    "chat": "catalog:"
+    "isomorphic-git": "^1.27.1",
+    "just-bash": "^2"
   },
   "devDependencies": {
     "@types/bun": "latest"
   },
   "peerDependencies": {
-    "ai": "catalog:"
+    "chat": "catalog:"
   }
 }
