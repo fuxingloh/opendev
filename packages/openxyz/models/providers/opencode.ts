@@ -9,7 +9,11 @@ const zen = createOpenAICompatible({
   baseURL: "https://opencode.ai/zen/v1",
 });
 
-/** Usage: `opencode("big-pickle")`. */
+/**
+ * Usage: `opencode("big-pickle")`. No cache-control wrap — `@ai-sdk/openai-compatible`
+ * drops non-`openaiCompatible` providerOptions, so the anthropic/bedrock markers
+ * don't reach the wire. See `_cache.ts` follow-up notes.
+ */
 export default function opencode(modelId: string): LanguageModel {
   return zen(modelId);
 }

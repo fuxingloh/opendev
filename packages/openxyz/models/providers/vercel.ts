@@ -9,7 +9,11 @@ const gateway = createOpenAICompatible({
   baseURL: "https://ai-gateway.vercel.sh/v1",
 });
 
-/** Usage: `vercel("anthropic/claude-sonnet-4-5")`. */
+/**
+ * Usage: `vercel("anthropic/claude-sonnet-4-5")`. No cache-control wrap —
+ * routed through `@ai-sdk/openai-compatible`, which drops anthropic markers.
+ * Swap to `@ai-sdk/gateway` and re-wire caching there when that migration lands.
+ */
 export default function vercel(modelId: string): LanguageModel {
   return gateway(modelId);
 }
