@@ -1,8 +1,9 @@
-import type { ModelMessage } from "ai";
+import type { ModelMessage, SystemModelMessage } from "ai";
 import type { Thread as ChatSdkThread, Message as ChatSdkMessage, Adapter as ChatSdkAdapter } from "chat";
 
 export type Thread = ChatSdkThread<{
-  // summary?: Summary;
+  /** Full agent-loop log — the session ledger (mnemonic/081). */
+  session?: ModelMessage[];
 }>;
 
 export type Message<Raw = unknown> = ChatSdkMessage<Raw>;
@@ -29,18 +30,28 @@ export abstract class Channel<Raw = unknown> {
   abstract readonly adapter: ChatSdkAdapter;
 
   /**
-   * Environment frame — prepended on top, do not use unstable data.
-   * Use for values that change per-request (thread name, etc.). Session-scoped.
-   * Return lines; the runtime joins with `\n` and wraps into a system message.
+   * Per-turn system message prepended to the session log before the agent
+   * runs. Use for values that change per-request (thread name, DM vs group,
+   * platform identity). Return an empty `content` string to prepend nothing.
+   * Stable content (agent persona, skills index) lives on the agent's
+   * `instructions`, not here — the runtime re-calls `system()` every turn.
    */
-  abstract environment(thread: Thread, message: Message<Raw>): Promise<string[]>;
+  abstract systemMessage(thread: Thread, message: Message<Raw>): Promise<SystemModelMessage>;
 
   /**
-   * Prepare context (conversation history) for the agent. Concrete adapters
-   * typically iterate `thread.channel.messages`, honor `this.filter?`, and
-   * return `ModelMessage[]` via `toAiMessages`.
+   * Convert an incoming platform message into a single `ModelMessage` the
+   * runtime appends to the session before each agent turn. History is not
+   * the channel's concern — that lives in the session (mnemonic/081 — two-
+   * ledger split).
+   *
+   * Abstract on purpose. Each platform carries different metadata worth
+   * surfacing to the agent (Telegram reply/forward XML, Slack thread refs,
+   * Discord replies-as-embeds, terminal file attachments, …) — a shared
+   * default would lie about at least one of them. Concrete adapters call
+   * chat-sdk's `toAiMessages([message], { transformMessage })` with the
+   * annotation their platform needs.
    */
-  abstract context(thread: Thread, message: Message<Raw>): Promise<ModelMessage[]>;
+  abstract toModelMessage(thread: Thread, message: Message<Raw>): Promise<ModelMessage>;
 
   /**
    * Decide what to do with an incoming message. Return `{}` to stay silent;
@@ -56,62 +67,17 @@ export abstract class Channel<Raw = unknown> {
    * templates override it to scope context (e.g. PKBM-in-a-group filtering).
    */
   filter?(message: Message<Raw>, thread: Thread): boolean;
-}
 
-/**
- * Validate and return the default-exported `Channel` instance from a channel
- * module, applying any sibling `filter`/`reply` exports on top. Called from
- * `openxyz start` (runtime) and the built artifact (code-gen'd by `openxyz build`).
- *
- * Two template styles are supported and can be mixed:
- * 1. **Subclass** — define `class MyX extends TelegramChannel` and override
- *    `filter`/`reply`/... in the class. `export default new MyX(...)`.
- *    Can use `super.reply(...)` / `this` to compose with the parent class.
- * 2. **Sibling exports** — `export default new TelegramChannel(...)` plus
- *    `export function filter(...)` / `export function reply(...)`. The
- *    sibling `reply` can return `boolean` (true → default, false → silent)
- *    or a full `ReplyAction` object.
- *    Siblings are plain module functions, **not** class methods — no `this`,
- *    no `super`. Use `true` from `reply` to fall through to the default
- *    dispatch; for anything richer, switch to the subclass style.
- *
- * When both are present, sibling exports win (applied on top of the instance).
- */
-export function loadChannel(mod: any, filename: string): Channel {
-  if (!mod.default) {
-    throw new Error(`[openxyz] channels/${filename} has no default export`);
+  /**
+   * Return the `Session` the agent should read/write for this incoming
+   * message. Default is thread-scoped — one session per chat-sdk thread.
+   * Adapters that want channel-scoped sessions (supergroup forum topics
+   * sharing one assistant memory, etc.) override this and return
+   * `new Session(thread, "channel")`. See mnemonic/081.
+   */
+  async getSession(thread: Thread, _message: Message<Raw>): Promise<Session> {
+    return new Session(thread, "thread");
   }
-  if (!(mod.default instanceof Channel)) {
-    throw new Error(
-      `[openxyz] channels/${filename} default export is not a Channel instance — did you forget \`new\`?`,
-    );
-  }
-
-  const channel = mod.default as Channel;
-
-  if (mod.filter !== undefined) {
-    if (typeof mod.filter !== "function") {
-      throw new Error(`[openxyz] channels/${filename} \`filter\` export is not a function`);
-    }
-    channel.filter = mod.filter as MessageFilter;
-  }
-
-  if (mod.reply !== undefined) {
-    if (typeof mod.reply !== "function") {
-      throw new Error(`[openxyz] channels/${filename} \`reply\` export is not a function`);
-    }
-    const defaultReply = channel.reply.bind(channel);
-    const userReply = mod.reply as ReplyFunc;
-    channel.reply = async (thread, message) => {
-      const result = await userReply(thread, message);
-      if (typeof result === "boolean") {
-        return result ? defaultReply(thread, message) : {};
-      }
-      return result;
-    };
-  }
-
-  return channel;
 }
 
 export type MessageFilter<Raw = unknown> = (message: Message<Raw>, thread: Thread) => boolean;
@@ -120,3 +86,46 @@ export type ReplyFunc<Raw = unknown> = (
   thread: Thread,
   message: Message<Raw>,
 ) => boolean | Promise<boolean> | ReplyAction | Promise<ReplyAction>;
+
+/**
+ * Whether a session is keyed to the chat-sdk thread (one session per
+ * reply-thread / forum-topic) or to the channel (one session for the whole
+ * room, shared across every thread inside it). See mnemonic/081.
+ */
+export type SessionScope = "thread" | "channel";
+
+/**
+ * Session = the agent's view of the conversation (full `ModelMessage[]`
+ * including tool calls, tool results, and reasoning blocks). Distinct from
+ * the chat-sdk thread, which only stores what got rendered to the user.
+ *
+ * Persistence piggy-backs on chat-sdk's `thread.state` / `channel.state` —
+ * whichever adapter the user picked (memory, Redis, PGlite, Postgres)
+ * stores the session log alongside thread/channel metadata. No parallel
+ * store, no parallel TTL.
+ *
+ * Scope is picked by `Channel.getSession()` — defaults to `"thread"`.
+ * Cross-channel identity stitching (same user across Telegram + terminal)
+ * is a later problem.
+ */
+export class Session {
+  constructor(
+    private readonly thread: Thread,
+    private readonly scope: SessionScope = "thread",
+  ) {}
+
+  private get postable() {
+    return this.scope === "thread" ? this.thread : this.thread.channel;
+  }
+
+  async messages(): Promise<ModelMessage[]> {
+    const state = await this.postable.state;
+    return state?.session ?? [];
+  }
+
+  async append(messages: ModelMessage[]): Promise<void> {
+    if (messages.length === 0) return;
+    const existing = await this.messages();
+    await this.postable.setState({ session: [...existing, ...messages] });
+  }
+}

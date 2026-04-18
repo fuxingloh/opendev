@@ -1,7 +1,7 @@
 import { Chat } from "chat";
-import type { Thread as ChatSdkThread, Message as ChatSdkMessage, StateAdapter } from "chat";
-import type { LanguageModel, Tool } from "ai";
-import type { Channel } from "./channels";
+import type { Message as ChatSdkMessage, StateAdapter } from "chat";
+import type { LanguageModel, ModelMessage, Tool } from "ai";
+import type { Channel, Thread } from "./channels";
 import type { Drive } from "./drive";
 import { AgentFactory, type AgentDef } from "./agents/factory";
 import type { SkillDef } from "./tools/skill";
@@ -71,6 +71,10 @@ export class OpenXyz {
   /**
    * Non-blocking init. Wires channel handlers into chat-sdk and initializes
    * adapters. Callers own the `state` lifecycle — create it, pass it in.
+   *
+   * Session storage (the agent-ledger — full `ModelMessage[]` with tool
+   * dialog) piggy-backs on `state` via chat-sdk's `thread.state` — Redis /
+   * PGlite / Postgres all transparently persist it. See mnemonic/081.
    */
   async init(opts: { state: StateAdapter }): Promise<void> {
     const channels = this.runtime.channels;
@@ -153,7 +157,7 @@ export class OpenXyz {
     return this.#chat.webhooks as Record<string, (request: Request) => Promise<Response>>;
   }
 
-  async onMessage(thread: ChatSdkThread, message: ChatSdkMessage): Promise<void> {
+  async onMessage(thread: Thread, message: ChatSdkMessage): Promise<void> {
     await thread.subscribe();
     const channel = this.runtime.channels[thread.adapter.name];
     if (!channel) {
@@ -195,13 +199,30 @@ export class OpenXyz {
     }
 
     const agent = await this.agentFactory.create(reply.agent);
-    const [env, context] = await Promise.all([channel.environment(thread, message), channel.context(thread, message)]);
-    // Env goes before the conversation, not after — Bedrock (and some other providers) reject system
-    // messages interleaved between user/assistant turns.
-    const prompt = env.length > 0 ? [{ role: "system" as const, content: env.join("\n") }, ...context] : context;
+    // Channel decides session scope (thread-scoped by default, channel-scoped
+    // for Telegram groups, etc.). toModelMessage converts the incoming
+    // platform message into a UserModelMessage with any platform-specific
+    // annotation. History lives in session, not the chat-sdk thread
+    // (mnemonic/081).
+    const [system, userMessage, session] = await Promise.all([
+      channel.systemMessage(thread, message),
+      channel.toModelMessage(thread, message),
+      channel.getSession(thread, message),
+    ]);
+    await session.append([userMessage]);
+    const history = await session.messages();
+    // System goes before the conversation, not after — Bedrock (and some other providers) reject system
+    // messages interleaved between user/assistant turns. Empty content = channel had nothing to say.
+    const prompt: ModelMessage[] = [system, ...history];
     const result = await agent.stream({ prompt });
     try {
+      // Consume fullStream first (renders to chat-sdk thread = UI ledger), then
+      // await response.messages to capture the agent ledger. AI SDK ties the
+      // two together — reading either consumes the stream — so this ordering
+      // is load-bearing.
       await thread.post(result.fullStream);
+      const response = await result.response;
+      await session.append(response.messages);
     } catch (err) {
       console.error(`[openxyz] thread.post failed`, err);
       const msg = err instanceof Error ? err.message : String(err);

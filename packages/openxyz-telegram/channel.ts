@@ -1,8 +1,8 @@
 import { createTelegramAdapter, type TelegramAdapterConfig, type TelegramRawMessage } from "@chat-adapter/telegram";
 import { type AiMessage, type AiMessagePart, type Message, toAiMessages } from "chat";
 import type { Adapter as ChatSdkAdapter } from "chat";
-import type { ModelMessage } from "ai";
-import { Channel, type ReplyAction, type Thread } from "@openxyz/runtime/channels";
+import type { ModelMessage, SystemModelMessage } from "ai";
+import { Channel, Session, type ReplyAction, type Thread } from "@openxyz/runtime/channels";
 import { backend } from "@openxyz/runtime/backend";
 
 export type { Thread, Message, ReplyAction } from "@openxyz/runtime/channels";
@@ -10,6 +10,14 @@ export { Channel } from "@openxyz/runtime/channels";
 
 export type TelegramConfig = TelegramAdapterConfig & {
   botToken: string;
+  /**
+   * When `true`, each Telegram forum topic (chat-sdk "thread") gets its own
+   * session log. When `false` (default), every topic inside a supergroup
+   * shares one session — the chief-of-staff model where the assistant
+   * remembers across topics in the same room. Irrelevant in DMs, where
+   * thread and channel are effectively the same scope.
+   */
+  threaded?: boolean;
 };
 
 /**
@@ -20,9 +28,11 @@ export type TelegramConfig = TelegramAdapterConfig & {
  */
 export class TelegramChannel extends Channel<TelegramRaw> {
   readonly adapter: ChatSdkAdapter;
+  readonly #threaded: boolean;
 
   constructor(opts: TelegramConfig) {
     super();
+    this.#threaded = opts.threaded ?? false;
     // On Vercel, the function is serverless — polling would block forever
     // and bleed connections. Require webhook mode; the user runs Telegram's
     // `setWebhook` once, pointing at `https://<deploy>/webhooks/telegram`.
@@ -32,31 +42,31 @@ export class TelegramChannel extends Channel<TelegramRaw> {
     this.adapter = createTelegramAdapter({ ...opts, mode });
   }
 
-  async context(thread: Thread, _message: Message<TelegramRaw>): Promise<ModelMessage[]> {
-    // Telegram "threads" are forum topics — a supergroup splits into many.
-    // `thread.channel.messages` iterates newest-first across every topic,
-    // auto-paginating via the adapter (cache-backed on Telegram).
-    // TODO: Busy-group duplicate-fetch bug — see mnemonic/065. This runs per
-    //  incoming message and returns a growing cached window each time, causing
-    //  replies to stale turns. Likely fix: skip fetch when `reply()` returns {},
-    //  mark the triggering message, dedupe by id.
+  override async getSession(thread: Thread, _message: Message<TelegramRaw>): Promise<Session> {
+    // Default `threaded: false` → channel-scoped. Supergroups with forum
+    // topics pool every topic into one session, so the assistant keeps a
+    // single running memory across the whole group. Flip to `threaded: true`
+    // for strict per-topic sessions. DMs collapse the distinction either way.
+    return new Session(thread, this.#threaded ? "thread" : "channel");
+  }
+
+  async toModelMessage(thread: Thread, message: Message<TelegramRaw>): Promise<ModelMessage> {
+    // History is owned by the session now (mnemonic/081). Per-message mapping
+    // preserves Telegram's reply/forward XML annotation so the agent sees
+    // conversation structure, not just flat text.
     const botUserId = (this.adapter as { botUserId?: string }).botUserId;
-    const messages: Message<TelegramRaw>[] = [];
-    for await (const msg of thread.channel.messages) {
-      const m = msg as Message<TelegramRaw>;
-      if (this.filter && !this.filter(m, thread)) continue;
-      messages.push(m);
-      if (messages.length >= 50) break;
-    }
-    console.log(`[telegram] context fetched ${messages.length} messages for channel ${thread.channel.id}`);
-    return await toAiMessages(messages.reverse(), {
+    const [result] = await toAiMessages([message], {
       includeNames: !thread.isDM,
       transformMessage: (aiMsg, src) => annotate(aiMsg, src, botUserId),
     });
+    return result as ModelMessage;
   }
 
-  async environment(thread: Thread, _message: Message<TelegramRaw>): Promise<string[]> {
-    return [thread.isDM ? `Telegram DM: ${thread.channel.name}` : `Telegram Group: ${thread.channel.name}`];
+  async systemMessage(thread: Thread, _message: Message<TelegramRaw>): Promise<SystemModelMessage> {
+    return {
+      role: "system",
+      content: thread.isDM ? `Telegram DM: ${thread.channel.name}` : `Telegram Group: ${thread.channel.name}`,
+    };
   }
 
   /**
