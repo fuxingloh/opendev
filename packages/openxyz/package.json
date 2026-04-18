@@ -10,12 +10,14 @@
     "bin",
     "channels/*",
     "env.ts",
+    "mcp.ts",
     "models/**",
     "tools.ts",
     "tsconfig.json"
   ],
   "dependencies": {
     "@ai-sdk/amazon-bedrock": "4.0.93",
+    "@ai-sdk/mcp": "^1.0.36",
     "@ai-sdk/openai-compatible": "2.0.41",
     "@openxyz/runtime": "workspace:*",
     "@openxyz/telegram": "workspace:*",
