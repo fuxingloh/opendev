@@ -125,7 +125,55 @@ export class Session {
 
   async append(messages: ModelMessage[]): Promise<void> {
     if (messages.length === 0) return;
-    const existing = await this.messages();
+    // Prune the existing log on write; freshly-appended messages stay intact
+    // for one turn (agent saw them in-stream anyway). Next append moves them
+    // into `existing` and they get pruned before the following turn reads.
+    // Deciding what to keep vs summarize is compaction's problem — see
+    // mnemonic/083 for the framing.
+    const existing = pruneToolOutputs(await this.messages());
     await this.postable.setState({ session: [...existing, ...messages] });
   }
+}
+
+/**
+ * Tools whose outputs are load-bearing context the agent needs verbatim
+ * across turns. `skill` — output is the skill's instructions the agent is
+ * mid-following. `delegate` — output is the subagent's final report, small
+ * but high-signal, pruning loses the "why" of the delegate call.
+ *
+ * Everything else prunes by default. MCP tools + user-defined tools can
+ * migrate to a per-tool opt-out later if this list grows unwieldy.
+ */
+const NEVER_PRUNE_TOOLS = new Set(["skill", "delegate"]);
+
+/**
+ * Replace every `tool-result` output with a byte-count stub. `toolCallId` +
+ * `toolName` stay on the parent part so the LLM still sees the shape of the
+ * loop. Idempotent: already-pruned stubs keep their original size label.
+ * `NEVER_PRUNE_TOOLS` skips the carve-outs verbatim.
+ */
+function pruneToolOutputs(messages: ModelMessage[]): ModelMessage[] {
+  return messages.map((msg) => {
+    if (msg.role !== "tool") return msg;
+    return {
+      ...msg,
+      content: msg.content.map((part) => {
+        if (part.type !== "tool-result") return part;
+        if (NEVER_PRUNE_TOOLS.has(part.toolName)) return part;
+        if (isPrunedStub(part.output)) return part;
+        const size = JSON.stringify(part.output).length;
+        return { ...part, output: { type: "text" as const, value: `[pruned ${size} bytes]` } };
+      }),
+    } as ModelMessage;
+  });
+}
+
+function isPrunedStub(output: unknown): boolean {
+  return (
+    typeof output === "object" &&
+    output !== null &&
+    (output as { type?: unknown }).type === "text" &&
+    typeof (output as { value?: unknown }).value === "string" &&
+    /^\[pruned \d+ bytes]$/.test((output as { value: string }).value)
+  );
 }
