@@ -82,6 +82,12 @@ export class OpenXyz {
     const chat = new Chat({
       adapters: Object.fromEntries(Object.entries(channels).map(([k, v]) => [k, v.adapter])) as Record<string, never>,
       state: opts.state,
+      // Serialize per-thread handlers: a second message arriving while the
+      // agent is mid-turn gets enqueued and drained after the first finishes,
+      // so tool-loops never run concurrently over the same session log
+      // (mnemonic/082). Default is "drop", which silently discards the 2nd —
+      // unusable as an agent harness.
+      concurrency: "queue",
       userName: "openxyz",
       logger: "info",
       fallbackStreamingPlaceholderText: null,
