@@ -105,6 +105,7 @@
     "templates/openxyz-janitor": {
       "name": "openxyz-janitor",
       "dependencies": {
+        "@openxyz/github": "workspace:*",
         "openxyz": "workspace:*",
       },
       "devDependencies": {
