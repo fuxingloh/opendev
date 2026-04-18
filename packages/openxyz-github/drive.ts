@@ -2,7 +2,7 @@ import { mkdtempSync } from "node:fs";
 import * as fs from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { add, branch, clone, commit, fastForward, push, remove, statusMatrix } from "isomorphic-git";
+import { add, branch, clone, commit, fastForward, init, push, remove, statusMatrix } from "isomorphic-git";
 import http from "isomorphic-git/http/node";
 import { OverlayFs, ReadWriteFs, type IFileSystem } from "just-bash";
 import type { Drive, Permission } from "@openxyz/runtime/drive";
@@ -82,22 +82,66 @@ export class GitHubDrive implements Drive {
   async refresh(): Promise<void> {
     if (!this.#dir) {
       const dir = mkdtempSync(join(tmpdir(), "openxyz-github-"));
-      await clone({
-        fs,
-        http,
-        dir,
-        url: `https://github.com/${this.owner}/${this.repo}.git`,
-        ref: this.branch,
-        singleBranch: true,
-        depth: 1,
-        onAuth: this.#onAuth(),
-      });
+      try {
+        await clone({
+          fs,
+          http,
+          dir,
+          url: this.#url(),
+          ref: this.branch,
+          singleBranch: true,
+          depth: 1,
+          onAuth: this.#onAuth(),
+        });
+      } catch (err) {
+        // Empty repo or branch doesn't exist yet — bootstrap: init locally,
+        // make an initial README commit, push to create the branch. Only
+        // applies on read-write drives; read-only can't push an init commit.
+        const msg = err instanceof Error ? err.message : String(err);
+        if (this.permission === "read-write" && /could not find|not found|empty/i.test(msg)) {
+          await this.#bootstrap(dir);
+        } else {
+          throw err;
+        }
+      }
       this.#dir = dir;
       return;
     }
     // Already cloned — fast-forward to the latest remote tip. Non-ff situations
     // (local session branch ahead of remote main) are handled in `commit`.
     await fastForward({ fs, http, dir: this.#dir, ref: this.branch, onAuth: this.#onAuth() });
+  }
+
+  /**
+   * Create the tracked branch from scratch. Used when the repo is empty or
+   * the branch doesn't exist yet. Writes a placeholder `README.md`, commits,
+   * pushes — now the remote has the branch and future `refresh()` calls
+   * succeed via the normal clone path.
+   */
+  async #bootstrap(dir: string): Promise<void> {
+    await init({ fs, dir, defaultBranch: this.branch });
+    const readme = `# ${this.repo}\n\nInitialized by openxyz.\n`;
+    await fs.promises.writeFile(join(dir, "README.md"), readme);
+    await add({ fs, dir, filepath: "README.md" });
+    await commit({
+      fs,
+      dir,
+      author: this.author,
+      message: `openxyz: initialize \`${this.branch}\``,
+    });
+    await push({
+      fs,
+      http,
+      dir,
+      url: this.#url(),
+      ref: this.branch,
+      remoteRef: this.branch,
+      onAuth: this.#onAuth(),
+    });
+  }
+
+  #url(): string {
+    return `https://github.com/${this.owner}/${this.repo}.git`;
   }
 
   fs(): IFileSystem {
