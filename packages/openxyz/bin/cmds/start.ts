@@ -9,6 +9,7 @@ import { WorkspaceDrive } from "@openxyz/runtime/workspace";
 import type { Drive } from "@openxyz/runtime/drive";
 import { Command } from "commander";
 import { scanDir, type OpenXyzFiles } from "../scan";
+import { expandToolModule } from "../tools-loader";
 
 export default new Command("start").option("-p, --port <port>", "Port to listen on").action(action);
 
@@ -52,13 +53,17 @@ async function loadRuntime(scan: OpenXyzFiles): Promise<OpenXyzRuntime> {
   }
 
   const tools: Record<string, Tool> = {};
+  const cleanup: Array<() => Promise<void>> = [];
   for (const [name, path] of Object.entries(t.tools)) {
     const mod = await import(abs(path));
-    if (!mod.default) {
-      console.warn(`[openxyz] tools/${name} has no default export, skipping`);
-      continue;
+    const expanded = await expandToolModule(name, mod);
+    for (const [id, tool] of Object.entries(expanded.tools)) {
+      if (tools[id]) {
+        console.warn(`[openxyz] tool id "${id}" defined by multiple files, last one wins`);
+      }
+      tools[id] = tool;
     }
-    tools[name] = mod.default;
+    if (expanded.cleanup) cleanup.push(expanded.cleanup);
   }
 
   // TODO: add a toggle so templates can opt out of shipped agents.
@@ -119,7 +124,7 @@ async function loadRuntime(scan: OpenXyzFiles): Promise<OpenXyzRuntime> {
     drives[`/mnt/${name}`] = mod.default as Drive;
   }
 
-  return { cwd: scan.cwd, channels, tools, agents, models, drives, skills, mds };
+  return { cwd: scan.cwd, channels, tools, agents, models, drives, skills, mds, cleanup };
 }
 
 /**

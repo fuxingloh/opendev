@@ -44,7 +44,9 @@ export async function generateEntrypoint(
   // at build time below and emit JSON literals. That removes the `yaml`
   // (formerly `gray-matter`) parser from the production bundle entirely.
   // See mnemonic/068 for the gray-matter→yaml crash story.
-  imports.push(`import { OpenXyz, loadChannel, createChatState, waitUntil, WorkspaceDrive } from "openxyz/_runtime";`);
+  imports.push(
+    `import { OpenXyz, loadChannel, createChatState, waitUntil, WorkspaceDrive, expandToolModule } from "openxyz/_runtime";`,
+  );
 
   const channelEntries: string[] = [];
   Object.entries(t.channels).forEach(([name, path], i) => {
@@ -53,11 +55,14 @@ export async function generateEntrypoint(
     channelEntries.push(`  ${JSON.stringify(name)}: loadChannel(${id}, ${JSON.stringify(name)}),`);
   });
 
-  const toolEntries: string[] = [];
+  // Tools modules can default-export a tool(), an mcp(), or expose named
+  // tool() exports. Discrimination (+ MCP connect + cleanup) happens at boot
+  // via `expandToolModule`. Namespace import so we capture every export.
+  const toolModuleEntries: string[] = [];
   Object.entries(t.tools).forEach(([name, path], i) => {
     const id = `__tool${i}`;
-    imports.push(`import ${id} from ${JSON.stringify(toRel(abs(path)))};`);
-    toolEntries.push(`  ${JSON.stringify(name)}: ${id},`);
+    imports.push(`import * as ${id} from ${JSON.stringify(toRel(abs(path)))};`);
+    toolModuleEntries.push(`  { name: ${JSON.stringify(name)}, mod: ${id} },`);
   });
 
   // Drives: WorkspaceDrive is always mounted at /workspace (runtime-intercepted
@@ -117,11 +122,31 @@ export async function generateEntrypoint(
     mdIds[slot] = id;
   });
 
+  // Expand every tools/*.ts module at boot — MCP servers connect here, named
+  // tool() exports get flattened into `<filename>_<export>` ids. Must NOT run
+  // at build time (credentials, network, wrong env). `__toolCleanup` carries
+  // teardown callbacks into `runtime.cleanup` so `OpenXyz.stop()` can close
+  // MCP clients on shutdown.
+  if (toolModuleEntries.length > 0) {
+    body.push(`const __toolModules = [\n${toolModuleEntries.join("\n")}\n];`);
+    body.push(`const __tools = {};`);
+    body.push(`const __toolCleanup = [];`);
+    body.push(`for (const { name, mod } of __toolModules) {`);
+    body.push(`  const expanded = await expandToolModule(name, mod);`);
+    body.push(`  Object.assign(__tools, expanded.tools);`);
+    body.push(`  if (expanded.cleanup) __toolCleanup.push(expanded.cleanup);`);
+    body.push(`}`);
+  } else {
+    body.push(`const __tools = {};`);
+    body.push(`const __toolCleanup = [];`);
+  }
+  body.push(``);
   body.push(`const openxyz = new OpenXyz({`);
   // Runtime cwd = function directory on Vercel, not the build machine's path.
   body.push(`  cwd: import.meta.dir,`);
   body.push(channelEntries.length > 0 ? `  channels: {\n${channelEntries.join("\n")}\n  },` : `  channels: {},`);
-  body.push(toolEntries.length > 0 ? `  tools: {\n${toolEntries.join("\n")}\n  },` : `  tools: {},`);
+  body.push(`  tools: __tools,`);
+  body.push(`  cleanup: __toolCleanup,`);
   body.push(agentEntries.length > 0 ? `  agents: {\n${agentEntries.join("\n")}\n  },` : `  agents: {},`);
   body.push(modelEntries.length > 0 ? `  models: {\n${modelEntries.join("\n")}\n  },` : `  models: {},`);
   body.push(skillEntries.length > 0 ? `  skills: [\n${skillEntries.join("\n")}\n  ],` : `  skills: [],`);

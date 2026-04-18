@@ -10,9 +10,9 @@
     "bin",
     "channels/*",
     "env.ts",
-    "mcp.ts",
     "models/**",
     "tools.ts",
+    "tools/*",
     "tsconfig.json"
   ],
   "dependencies": {
