@@ -17,6 +17,7 @@ export function virtualRuntimePlugin(): BunPlugin {
   const runtimeRoot = new URL("../../../../openxyz-runtime/", import.meta.url).pathname;
   const openxyzRoot = new URL("../../../", import.meta.url).pathname;
   const toolsLoader = new URL("../../tools-loader.ts", import.meta.url).pathname;
+  const channelsLoader = new URL("../../channels-loader.ts", import.meta.url).pathname;
   const vercelFunctions = Bun.resolveSync("@vercel/functions", openxyzRoot);
 
   return {
@@ -30,7 +31,7 @@ export function virtualRuntimePlugin(): BunPlugin {
         loader: "ts",
         contents: [
           `export { OpenXyz } from ${JSON.stringify(runtimeRoot + "openxyz.ts")};`,
-          `export { loadChannel } from ${JSON.stringify(runtimeRoot + "channels.ts")};`,
+          `export { loadChannel } from ${JSON.stringify(channelsLoader)};`,
           `export { createChatState } from ${JSON.stringify(runtimeRoot + "databases/index.ts")};`,
           `export { WorkspaceDrive } from ${JSON.stringify(runtimeRoot + "workspace.ts")};`,
           `export { expandToolModule } from ${JSON.stringify(toolsLoader)};`,

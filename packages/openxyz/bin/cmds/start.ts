@@ -1,7 +1,8 @@
 import { join } from "node:path";
 import type { Tool } from "ai";
 import { OpenXyz, type Model, type OpenXyzRuntime } from "@openxyz/runtime/openxyz";
-import { loadChannel, type Channel } from "@openxyz/runtime/channels";
+import type { Channel } from "@openxyz/runtime/channels";
+import { loadChannel } from "../channels-loader";
 import { parseAgent, type AgentDef } from "@openxyz/runtime/agents/factory";
 import { parseSkill, type SkillDef } from "@openxyz/runtime/tools/skill";
 import { createChatState } from "@openxyz/runtime/databases";
