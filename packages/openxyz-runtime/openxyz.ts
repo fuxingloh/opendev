@@ -48,6 +48,12 @@ export type OpenXyzRuntime = {
    * the top-level shape.
    */
   mds?: { agents?: string };
+  /**
+   * Teardown callbacks registered by the loader (MCP clients, stdio child
+   * processes, etc.). `OpenXyz.stop()` invokes each with `Promise.allSettled`
+   * so a slow or failing teardown never blocks the others.
+   */
+  cleanup?: Array<() => Promise<void>>;
 };
 
 export class OpenXyz {
@@ -219,5 +225,9 @@ export class OpenXyz {
 
   async stop(): Promise<void> {
     await this.#chat?.shutdown();
+    const cleanup = this.runtime.cleanup;
+    if (cleanup && cleanup.length > 0) {
+      await Promise.allSettled(cleanup.map((fn) => fn()));
+    }
   }
 }
