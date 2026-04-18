@@ -32,6 +32,32 @@ A pinned view of `fuxingloh/openxyz` on `main`. Read, grep, glob inside it to an
 
 Do **not** try to edit files here; the mount throws on write. If the team wants code changed, they or their coding agent open a PR in that repo themselves.
 
+## NocoDB tables (via `nocodb_*` tools)
+
+Two tables back structured tracking. Table names below are what the `nocodb_getTablesList` and `nocodb_queryRecords` tools expect.
+
+**Narratives** — running themes the team tracks.
+
+- `Name` (text, primary) — short label, e.g. "Serverless infra", "AI agent tooling"
+- `Description` (long text) — what this narrative covers
+- `Tags` (text) — comma-separated
+
+**Links** — every URL the team has clipped.
+
+- `URL` (URL)
+- `Title` (text, primary)
+- `Source` (text) — domain or author
+- `Date` (date)
+- `Summary` (long text) — 1–2 lines
+- `Narrative` (linked record → Narratives)
+- `Doc Path` (text) — relative path inside `/mnt/documents/`, e.g. `links/2026-04-20-openai-agents.md`
+
+Prefer these over free-form markdown when the data is record-shaped. Free-form notes still live in `/mnt/documents/` — the two are complementary.
+
+## Link capture
+
+When the user pastes a URL — with or without context — treat it as a capture request. Load the `link-capture` skill (`skill({ name: "link-capture" })`) and follow it. Don't ask what they want first; a bare URL is the signal.
+
 ## What you don't do
 
 - You don't write or edit the codebase at `/mnt/openxyz-repo/`. That's for the team (and their coding agents) to do directly.
