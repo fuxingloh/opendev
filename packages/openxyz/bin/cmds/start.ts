@@ -1,8 +1,9 @@
 import { join } from "node:path";
 import type { Tool } from "ai";
-import { OpenXyz, type Model, type OpenXyzRuntime } from "@openxyz/runtime/openxyz";
+import { OpenXyz, type OpenXyzRuntime } from "@openxyz/runtime/openxyz";
+import type { Model } from "@openxyz/runtime/model";
 import type { Channel } from "@openxyz/runtime/channels";
-import { loadChannel } from "../channels-loader";
+import { loadChannel } from "../load-channel";
 import { parseAgent, type AgentDef } from "@openxyz/runtime/agents/factory";
 import { parseSkill, type SkillDef } from "@openxyz/runtime/tools/skill";
 import { createChatState } from "@openxyz/runtime/databases";
@@ -10,7 +11,8 @@ import { WorkspaceDrive } from "@openxyz/runtime/workspace";
 import type { Drive } from "@openxyz/runtime/drive";
 import { Command } from "commander";
 import { scanDir, type OpenXyzFiles } from "../scan";
-import { expandToolModule } from "../tools-loader";
+import { loadTools } from "../load-tools";
+import { loadModel } from "../load-model";
 
 export default new Command("start").option("-p, --port <port>", "Port to listen on").action(action);
 
@@ -57,7 +59,7 @@ async function loadRuntime(scan: OpenXyzFiles): Promise<OpenXyzRuntime> {
   const cleanup: Array<() => Promise<void>> = [];
   for (const [name, path] of Object.entries(t.tools)) {
     const mod = await import(abs(path));
-    const expanded = await expandToolModule(name, mod);
+    const expanded = await loadTools(name, mod);
     for (const [id, tool] of Object.entries(expanded.tools)) {
       if (tools[id]) {
         console.warn(`[openxyz] tool id "${id}" defined by multiple files, last one wins`);
@@ -95,9 +97,10 @@ async function loadRuntime(scan: OpenXyzFiles): Promise<OpenXyzRuntime> {
       console.warn(`[openxyz] models/${name} has no default export, skipping`);
       continue;
     }
-    // Default export may be a concrete `Model` or a factory function
-    // (e.g. `auto.ts` that resolves `OPENXYZ_MODEL` at load time).
-    models[name] = typeof mod.default === "function" ? await mod.default() : mod.default;
+    // Convert the whole module — loadModel reads `default` (awaiting if
+    // it's a factory) plus optional `systemPrompt` / `limit` named
+    // exports. Runtime only sees the canonical `Model` wrapper.
+    models[name] = await loadModel(mod);
   }
 
   const skills: SkillDef[] = [];

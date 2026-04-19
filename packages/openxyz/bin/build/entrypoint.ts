@@ -87,12 +87,13 @@ export async function generateEntrypoint(
     const path = t.models[name] ? abs(t.models[name]!) : name === "auto" ? shippedAuto : undefined;
     if (!path) continue; // referenced but no source — agent picking it surfaces clearly at runtime
     const id = `__model${modelIdx++}`;
-    imports.push(`import ${id} from ${JSON.stringify(toRel(path))};`);
+    // Namespace import captures `default` + `systemPrompt` + `limit` named
+    // exports. `loadModel` reads whichever are present, awaits `default`
+    // if it's a factory, fills in shipped defaults for the rest.
+    imports.push(`import * as ${id} from ${JSON.stringify(toRel(path))};`);
     modelPairs.push({ name, id });
   }
-  const modelEntries = modelPairs.map(
-    ({ name, id }) => `  ${JSON.stringify(name)}: typeof ${id} === "function" ? await ${id}() : ${id},`,
-  );
+  const modelEntries = modelPairs.map(({ name, id }) => `  ${JSON.stringify(name)}: await loadModel(${id}),`);
 
   // Agents: parsed at build time, emitted as JSON literals. No runtime
   // `parseAgent` call, no YAML parser in the bundle.
