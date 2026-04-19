@@ -20,7 +20,7 @@ export type ExpandedTools = {
  * named locals). Collisions throw so the template author sees the problem
  * before the agent does.
  */
-export async function expandToolModule(name: string, mod: Record<string, unknown>): Promise<ExpandedTools> {
+export async function loadTools(name: string, mod: Record<string, unknown>): Promise<ExpandedTools> {
   const tools: Record<string, Tool> = {};
   let cleanup: (() => Promise<void>) | undefined;
 
