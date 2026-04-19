@@ -26,7 +26,7 @@ import DEFAULT_SYSTEM_PROMPT from "../models/prompts/system.md" with { type: "te
  * LanguageModel — that "intersection" form is equivalent and takes
  * precedence over module-level named exports.
  */
-export type ModelModule = {
+export type ModelDef = {
   /** LanguageModel or a factory returning one. */
   default: unknown;
   systemPrompt?: string;
@@ -60,7 +60,7 @@ const DEFAULT_CONTEXT_TOKENS = 200_000;
  * bundled entrypoint with a namespace import of the model module.
  * Once converted, runtime never touches the raw external form.
  */
-export async function loadModel(mod: ModelModule): Promise<Model> {
+export async function loadModel(mod: ModelDef): Promise<Model> {
   const def = mod.default;
   const raw = (typeof def === "function" ? await (def as () => unknown)() : def) as LanguageModel & {
     systemPrompt?: string;
