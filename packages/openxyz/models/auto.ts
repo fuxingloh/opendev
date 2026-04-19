@@ -6,13 +6,17 @@ import type { Model } from "@openxyz/runtime/openxyz";
  * ```env
  * OPENXYZ_MODEL=openrouter/z-ai/glm-4.6
  * OPENXYZ_MODEL=vercel/anthropic/claude-sonnet-4-5
- * OPENXYZ_MODEL=bedrock/zai.glm-5.0
+ * OPENXYZ_MODEL=amazon-bedrock/anthropic.claude-sonnet-4-5-20250929-v1:0
  * OPENXYZ_MODEL=opencode/big-pickle
  *```
  *
  * Splits on the first `/` only — the provider is the left half, the rest
  * (which may itself contain `/`) is passed through as the model id. Provider
  * modules are dynamic-imported so only the chosen one loads.
+ *
+ * **Provider keys match models.dev provider IDs** — same string names the
+ * filename (`providers/<key>.ts`), the switch-case below, and the lookup
+ * passed to `lookupContextLimit` inside the provider. See mnemonic/087.
  */
 export default async function auto(): Promise<Model> {
   if (process.env.OPENXYZ_MODEL === undefined) {
@@ -26,8 +30,8 @@ export default async function auto(): Promise<Model> {
   switch (provider) {
     case "opencode":
       return (await import("./providers/opencode")).default(modelId);
-    case "bedrock":
-      return (await import("./providers/bedrock")).default(modelId);
+    case "amazon-bedrock":
+      return (await import("./providers/amazon-bedrock")).default(modelId);
     case "openrouter":
       return (await import("./providers/openrouter")).default(modelId);
     case "vercel":
