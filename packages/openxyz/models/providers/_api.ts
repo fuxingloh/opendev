@@ -21,7 +21,7 @@ export type ModelLimit = {
   context?: number;
 };
 
-type Registry = Record<string, ModelLimit>;
+export type Registry = Record<string, ModelLimit>;
 
 /**
  * Providers openxyz ships. Shared with the build-time prefetch plugin so
@@ -36,6 +36,13 @@ type Registry = Record<string, ModelLimit>;
  * costs one HTTP round-trip per fresh process.
  */
 export const SUPPORTED_PROVIDERS = ["amazon-bedrock", "openrouter", "vercel", "opencode"] as const;
+
+/**
+ * Union derived from `SUPPORTED_PROVIDERS`. Imported by `auto.ts` to drive
+ * exhaustive provider dispatch — adding a key here + forgetting to wire it
+ * into auto's switch becomes a compile error.
+ */
+export type SupportedProvider = (typeof SUPPORTED_PROVIDERS)[number];
 
 /**
  * Cleared automatically after `CACHE_TTL_MS`. Short enough that idle
@@ -87,28 +94,89 @@ export async function lookupLimit(providerId: string, modelId: string): Promise<
   return map[key];
 }
 
-async function liveFetch(): Promise<Registry> {
+/**
+ * Register pre-resolved entries into the tier-1 dict. Used by `openxyz
+ * start` after reading the disk cache: it calls this instead of letting
+ * every provider factory hit tier 3. Build-time path doesn't call this —
+ * the Bun plugin rewrites the `prefetched` literal directly.
+ */
+export function registerPrefetched(entries: Registry): void {
+  Object.assign(prefetched, entries);
+}
+
+/**
+ * Fetch `models.dev/api.json` once and filter to either a single model
+ * (mode 1, `openxyzModel` given) or every tool-calling model in every
+ * `SUPPORTED_PROVIDERS` entry (mode 2, `openxyzModel` undefined). Used by:
+ *
+ * - `openxyz build` via the Bun plugin — result baked into the bundle.
+ * - `openxyz start` with a disk-cache wrapper — result persisted to
+ *   `.openxyz/models-api.json` so subsequent boots skip the HTTP.
+ *
+ * Fail-open: unreachable models.dev returns `{}`, callers treat that as
+ * "nothing prefetched, tier 2/3 covers it".
+ */
+export async function prefetchForBuild(openxyzModel: string | undefined): Promise<Registry> {
+  const data = await fetchApi();
+  if (!data) return {};
+
+  if (openxyzModel) {
+    // Mode 1: one specific model
+    const sep = openxyzModel.indexOf("/");
+    if (sep === -1) return {};
+    const providerId = openxyzModel.slice(0, sep);
+    const modelId = openxyzModel.slice(sep + 1);
+    const ctx = data[providerId]?.models?.[modelId]?.limit?.context;
+    if (typeof ctx === "number") {
+      return { [`${providerId}/${modelId}`]: { context: ctx } };
+    }
+    return {};
+  }
+
+  // Mode 2: all tool-calling models in supported providers
+  const out: Registry = {};
+  for (const providerId of SUPPORTED_PROVIDERS) {
+    const provider = data[providerId];
+    if (!provider?.models) continue;
+    for (const [modelId, model] of Object.entries(provider.models)) {
+      if (!model.tool_call) continue;
+      const ctx = model.limit?.context;
+      if (typeof ctx === "number") {
+        out[`${providerId}/${modelId}`] = { context: ctx };
+      }
+    }
+  }
+  return out;
+}
+
+type RawEntry = { limit?: { context?: number }; tool_call?: boolean };
+
+async function fetchApi(): Promise<Record<string, { models?: Record<string, RawEntry> }> | null> {
   try {
     const res = await fetch("https://models.dev/api.json", { signal: AbortSignal.timeout(10_000) });
     if (!res.ok) throw new Error(`models.dev HTTP ${res.status}`);
-    const data = (await res.json()) as Record<string, { models?: Record<string, { limit?: { context?: number } }> }>;
-    // Filter to the providers we ship — matches the build-time prefetch
-    // scope. Template-provided models using other ai-sdk providers fall
-    // through to the runtime 200K default (mnemonic/088).
-    const out: Registry = {};
-    for (const providerId of SUPPORTED_PROVIDERS) {
-      const provider = data[providerId];
-      if (!provider?.models) continue;
-      for (const [modelId, model] of Object.entries(provider.models)) {
-        if (typeof model.limit?.context === "number") {
-          out[`${providerId}/${modelId}`] = { context: model.limit.context };
-        }
+    return (await res.json()) as Record<string, { models?: Record<string, RawEntry> }>;
+  } catch (err) {
+    console.warn("[openxyz] models.dev fetch failed — runtime fallback will apply", err);
+    return null;
+  }
+}
+
+async function liveFetch(): Promise<Registry> {
+  const data = await fetchApi();
+  if (!data) return {};
+  // Filter to the providers we ship — matches the build-time prefetch
+  // scope. Template-provided models using other ai-sdk providers fall
+  // through to the runtime 200K default (mnemonic/088).
+  const out: Registry = {};
+  for (const providerId of SUPPORTED_PROVIDERS) {
+    const provider = data[providerId];
+    if (!provider?.models) continue;
+    for (const [modelId, model] of Object.entries(provider.models)) {
+      if (typeof model.limit?.context === "number") {
+        out[`${providerId}/${modelId}`] = { context: model.limit.context };
       }
     }
-    return out;
-  } catch (err) {
-    // One-time warning; subsequent lookups this window hit the empty cache.
-    console.warn("[openxyz] models.dev fetch failed — lookups return undefined", err);
-    return {};
   }
+  return out;
 }

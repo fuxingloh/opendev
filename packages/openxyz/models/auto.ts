@@ -1,3 +1,5 @@
+import { SUPPORTED_PROVIDERS, type SupportedProvider } from "./providers/_api";
+
 /**
  * Picks a provider at call time based on `OPENXYZ_MODEL`, e.g.:
  *
@@ -13,14 +15,24 @@
  * modules are dynamic-imported so only the chosen one loads.
  *
  * **Provider keys match models.dev provider IDs** — same string names the
- * filename (`providers/<key>.ts`), the switch-case below, and the lookup
- * passed to `lookupLimit` inside the provider. See mnemonic/087.
+ * filename (`providers/<key>.ts`), the key in `LOADERS` below, and the
+ * lookup passed to `lookupLimit` inside the provider. The `LOADERS` record
+ * is typed `Record<SupportedProvider, …>`, so adding a provider to
+ * `SUPPORTED_PROVIDERS` without wiring a loader here fails at compile time.
+ * See mnemonic/087.
  *
  * The factory returns the provider's decorated `LanguageModel` (raw ai-sdk
  * model + `.limit` attached via `Object.assign`). `loadModel` reads that at
- * the facade boundary. Return type inferred — there's no public symbol for
- * the intersection and it's implementation-detail.
+ * the facade boundary.
  */
+
+const LOADERS: Record<SupportedProvider, (modelId: string) => Promise<unknown>> = {
+  "amazon-bedrock": async (m) => (await import("./providers/amazon-bedrock")).default(m),
+  openrouter: async (m) => (await import("./providers/openrouter")).default(m),
+  vercel: async (m) => (await import("./providers/vercel")).default(m),
+  opencode: async (m) => (await import("./providers/opencode")).default(m),
+};
+
 export default async function auto() {
   if (process.env.OPENXYZ_MODEL === undefined) {
     throw new Error("OPENXYZ_MODEL environment variable is not set");
@@ -30,16 +42,8 @@ export default async function auto() {
   const provider = sep === -1 ? process.env.OPENXYZ_MODEL : process.env.OPENXYZ_MODEL.slice(0, sep);
   const modelId = sep === -1 ? "" : process.env.OPENXYZ_MODEL.slice(sep + 1);
 
-  switch (provider) {
-    case "opencode":
-      return (await import("./providers/opencode")).default(modelId);
-    case "amazon-bedrock":
-      return (await import("./providers/amazon-bedrock")).default(modelId);
-    case "openrouter":
-      return (await import("./providers/openrouter")).default(modelId);
-    case "vercel":
-      return (await import("./providers/vercel")).default(modelId);
-    default:
-      throw new Error(`Unsupported OPENXYZ_MODEL provider: ${provider}`);
+  if (!(SUPPORTED_PROVIDERS as readonly string[]).includes(provider)) {
+    throw new Error(`Unsupported OPENXYZ_MODEL provider: ${provider} (supported: ${SUPPORTED_PROVIDERS.join(", ")})`);
   }
+  return LOADERS[provider as SupportedProvider](modelId);
 }

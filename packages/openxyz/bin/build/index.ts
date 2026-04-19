@@ -6,7 +6,8 @@ import { generateEntrypoint } from "./entrypoint";
 import { FAVICON_SVG, generateFaviconIco } from "./favicon";
 import { virtualRuntimePlugin } from "./plugins/virtual-runtime";
 import { inMemoryWorkspacePlugin } from "./plugins/in-memory-workspace";
-import { modelsApiPrefetchPlugin, prefetchForBuild } from "./plugins/models-api-prefetch";
+import { modelsApiPrefetchPlugin } from "./plugins/models-api-prefetch";
+import { prefetchForBuild } from "../../models/providers/_api";
 
 export async function buildVercel(cwd: string): Promise<void> {
   const files = await scanDir(cwd);

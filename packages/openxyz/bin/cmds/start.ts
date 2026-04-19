@@ -13,6 +13,7 @@ import { Command } from "commander";
 import { scanDir, type OpenXyzFiles } from "../scan";
 import { loadTools } from "../load-tools";
 import { loadModel } from "../load-model";
+import { prefetchForBuild, registerPrefetched, type Registry } from "../../models/providers/_api";
 
 export default new Command("start").option("-p, --port <port>", "Port to listen on").action(action);
 
@@ -22,6 +23,12 @@ async function action(): Promise<void> {
     console.error("[openxyz] no channels found under channels/*.{js,ts} — nothing to run");
     process.exit(1);
   }
+
+  // Tier-1 prefetch via a disk-backed cache — the first `bun start` in a
+  // working directory fetches models.dev, persists under `.openxyz/`, and
+  // subsequent boots read from disk until the TTL lapses. Keeps dev loops
+  // offline-friendly and skips the ~200 ms HTTP round-trip on restart.
+  await warmLimitsFromDiskCache(files.cwd);
 
   const runtime = await loadRuntime(files);
   const openxyz = new OpenXyz(runtime);
@@ -129,6 +136,55 @@ async function loadRuntime(scan: OpenXyzFiles): Promise<OpenXyzRuntime> {
   }
 
   return { cwd: scan.cwd, channels, tools, agents, models, drives, skills, mds, cleanup };
+}
+
+/**
+ * Disk-backed tier-1 prefetch for `openxyz start`. Reads a recent
+ * `.openxyz/models-api.json` if present; otherwise fetches via
+ * `prefetchForBuild` and writes the result back for the next boot.
+ *
+ * Keyed on `OPENXYZ_MODEL`: changing the env invalidates the cache.
+ * Stale after `DISK_CACHE_TTL_MS` (24 h) — models.dev doesn't update
+ * hour-to-hour, and stale entries fall through to runtime tier 2/3
+ * anyway. Fail-open throughout.
+ */
+async function warmLimitsFromDiskCache(cwd: string): Promise<void> {
+  const DISK_CACHE_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
+  const cachePath = join(cwd, ".openxyz", "models-api.json");
+  const openxyzModel = process.env.OPENXYZ_MODEL;
+
+  const cached = await readDiskCache(cachePath);
+  if (cached && cached.openxyzModel === openxyzModel && Date.now() - cached.fetchedAt < DISK_CACHE_TTL_MS) {
+    registerPrefetched(cached.map);
+    return;
+  }
+
+  const map = await prefetchForBuild(openxyzModel);
+  if (Object.keys(map).length === 0) return; // fail-open — tier 3 handles it
+  registerPrefetched(map);
+  await writeDiskCache(cachePath, { fetchedAt: Date.now(), openxyzModel, map }).catch((err) =>
+    console.warn("[openxyz] models.dev disk cache write failed", err),
+  );
+}
+
+type DiskCache = {
+  fetchedAt: number;
+  openxyzModel: string | undefined;
+  map: Registry;
+};
+
+async function readDiskCache(path: string): Promise<DiskCache | null> {
+  const file = Bun.file(path);
+  if (!(await file.exists())) return null;
+  try {
+    return (await file.json()) as DiskCache;
+  } catch {
+    return null;
+  }
+}
+
+async function writeDiskCache(path: string, payload: DiskCache): Promise<void> {
+  await Bun.write(path, JSON.stringify(payload, null, 2));
 }
 
 /**
