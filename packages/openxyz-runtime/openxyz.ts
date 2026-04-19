@@ -210,6 +210,9 @@ export class OpenXyz {
       channel.getSession(thread, message),
     ]);
     await session.append([userMessage]);
+    // Compact before reading history — if session is over budget, replace
+    // older turns with a summary. Fail-open; see mnemonic/084.
+    await this.#compactIfNeeded(session, thread);
     const history = await session.messages();
     // System goes before the conversation, not after — Bedrock (and some other providers) reject system
     // messages interleaved between user/assistant turns. Empty content = channel had nothing to say.
@@ -246,6 +249,87 @@ export class OpenXyz {
         await thread
           .post(`⚠️ \`${mountPoint}\` — ${msg}`)
           .catch((e) => console.warn(`[openxyz] drive error post failed`, e));
+      }
+    }
+  }
+
+  /**
+   * Run the `compact` agent over the earlier part of the session log when it
+   * exceeds the token budget, replacing those turns with a single system
+   * summary. Preserves the last two user turns verbatim (continuity for the
+   * current reply). Fail-open: if the compact agent errors, log and leave
+   * the session as-is. Posts a user-visible "Compacting…" placeholder
+   * (deleted after) so the latency isn't invisible.
+   *
+   * See mnemonic/084 — TODO tokenizer, TODO per-model `contextLimit`,
+   * TODO recursive compaction when one pass doesn't fit under budget.
+   */
+  async #compactIfNeeded(session: Session, thread: Thread): Promise<void> {
+    // Universal threshold — every modern model supports at least this.
+    // Intentionally not scaled by model `contextLimit` (mnemonic/087): 40K
+    // is plenty for most chat workloads, keeps behaviour predictable, and
+    // leaves tokens on the floor only for users who genuinely need long
+    // context — they can override per-template when the need appears.
+    const COMPACT_THRESHOLD_TOKENS = 40_000;
+    // Compensates for `estimateTokens` bytes/4 underestimation on dense
+    // content (code, JSON, tool calls). Openclaw's number. Err toward
+    // compacting sooner rather than later.
+    const SAFETY_MARGIN = 1.2;
+
+    const messages = await session.messages();
+    if (estimateTokens(messages) * SAFETY_MARGIN < COMPACT_THRESHOLD_TOKENS) return;
+
+    // Preserve the last 2 user turns verbatim — a "turn" here meaning the
+    // user message plus every assistant/tool message that followed it.
+    // User-role messages act as turn boundaries in the session log, so
+    // slicing at the second-to-last user index captures two full
+    // round-trips (prompt + reasoning + tool calls + tool results + text)
+    // — not just the user lines. Everything older gets folded into the
+    // summary. <3 user messages means the log is too short to yield
+    // meaningful compression; skip.
+    const userIdxs = messages.flatMap((m, i) => (m.role === "user" ? [i] : []));
+    if (userIdxs.length < 3) return;
+    const preserveFromIdx = userIdxs[userIdxs.length - 2]!;
+    const toSummarize = messages.slice(0, preserveFromIdx);
+    const toPreserve = messages.slice(preserveFromIdx);
+
+    const placeholder = await thread.post("Compacting session…").catch((err) => {
+      console.warn("[openxyz] compaction placeholder post failed", err);
+      return undefined;
+    });
+
+    try {
+      const compact = await this.agentFactory.create("compact", { delegate: false });
+      const result = await compact.generate({
+        prompt: [
+          ...toSummarize,
+          { role: "user" as const, content: "Summarize this entire conversation following your instructions." },
+        ],
+      });
+      const summary: ModelMessage = {
+        role: "system",
+        content: `## Prior conversation summary\n\n${result.text}`,
+      };
+      await session.replace([summary, ...toPreserve]);
+
+      // Guard against runaway: if the summary + preserved turns still
+      // exceed budget (with the same safety margin), log and proceed. Do
+      // not recurse — a bad summary that doesn't shrink would loop forever.
+      // TODO(mnemonic/084): recursive compaction or hard truncation when
+      // this fires in practice.
+      const nextTokens = estimateTokens(await session.messages());
+      if (nextTokens * SAFETY_MARGIN >= COMPACT_THRESHOLD_TOKENS) {
+        console.error(
+          `[openxyz] compaction left session at ${nextTokens} tokens (×${SAFETY_MARGIN} margin, threshold ${COMPACT_THRESHOLD_TOKENS}) — proceeding with oversized prompt`,
+        );
+      }
+    } catch (err) {
+      // Fail-open: compaction is best-effort. Log and proceed with the
+      // oversized session log. The user's turn still completes.
+      console.warn("[openxyz] compaction failed, continuing with oversized session", err);
+    } finally {
+      if (placeholder) {
+        await placeholder.delete().catch((err) => console.warn("[openxyz] compaction placeholder delete failed", err));
       }
     }
   }
