@@ -16,8 +16,9 @@ export function virtualRuntimePlugin(): BunPlugin {
   // paths bypass package resolution entirely and always work.
   const runtimeRoot = new URL("../../../../openxyz-runtime/", import.meta.url).pathname;
   const openxyzRoot = new URL("../../../", import.meta.url).pathname;
-  const toolsLoader = new URL("../../tools-loader.ts", import.meta.url).pathname;
-  const channelsLoader = new URL("../../channels-loader.ts", import.meta.url).pathname;
+  const loadChannel = new URL("../../load-channel.ts", import.meta.url).pathname;
+  const loadModel = new URL("../../load-model.ts", import.meta.url).pathname;
+  const loadTools = new URL("../../load-tools.ts", import.meta.url).pathname;
   const vercelFunctions = Bun.resolveSync("@vercel/functions", openxyzRoot);
 
   return {
@@ -31,10 +32,11 @@ export function virtualRuntimePlugin(): BunPlugin {
         loader: "ts",
         contents: [
           `export { OpenXyz } from ${JSON.stringify(runtimeRoot + "openxyz.ts")};`,
-          `export { loadChannel } from ${JSON.stringify(channelsLoader)};`,
           `export { createChatState } from ${JSON.stringify(runtimeRoot + "databases/index.ts")};`,
           `export { WorkspaceDrive } from ${JSON.stringify(runtimeRoot + "workspace.ts")};`,
-          `export { expandToolModule } from ${JSON.stringify(toolsLoader)};`,
+          `export { loadChannel } from ${JSON.stringify(loadChannel)};`,
+          `export { loadModel } from ${JSON.stringify(loadModel)};`,
+          `export { loadTools } from ${JSON.stringify(loadTools)};`,
           `export { waitUntil } from ${JSON.stringify(vercelFunctions)};`,
         ].join("\n"),
       }));
