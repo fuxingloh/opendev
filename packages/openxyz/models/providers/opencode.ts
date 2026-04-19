@@ -1,5 +1,5 @@
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
-import { lookupLimit } from "../_models-dev";
+import { lookupLimit } from "./_api";
 
 // opencode.ai's hosted OpenAI-compatible gateway (mnemonic/025).
 // `public` is the free-tier key; set `OPENCODE_API_KEY` to use your own.

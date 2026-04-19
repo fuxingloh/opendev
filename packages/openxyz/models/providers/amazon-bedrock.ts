@@ -1,7 +1,7 @@
 import { bedrock as aws } from "@ai-sdk/amazon-bedrock";
 import { wrapLanguageModel } from "ai";
 import { cacheMiddleware } from "./_cache";
-import { lookupLimit } from "../_models-dev";
+import { lookupLimit } from "./_api";
 
 /**
  * Amazon Bedrock model factory. Credentials resolve from the AWS SDK's

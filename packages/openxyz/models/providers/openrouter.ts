@@ -1,5 +1,5 @@
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
-import { lookupLimit } from "../_models-dev";
+import { lookupLimit } from "./_api";
 
 // OpenRouter's OpenAI-compatible gateway. Requires `OPENROUTER_API_KEY`.
 // See https://openrouter.ai/docs for available model ids.

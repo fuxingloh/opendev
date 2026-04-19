@@ -1,5 +1,5 @@
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
-import { lookupLimit } from "../_models-dev";
+import { lookupLimit } from "./_api";
 
 // Vercel AI Gateway — routes provider-prefixed model ids (e.g. "anthropic/claude-sonnet-4-5").
 // Requires `AI_GATEWAY_API_KEY`. TODO: swap to `@ai-sdk/gateway` when added as a dep.
