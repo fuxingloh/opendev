@@ -1,5 +1,3 @@
-import type { Model } from "@openxyz/runtime/openxyz";
-
 /**
  * Picks a provider at call time based on `OPENXYZ_MODEL`, e.g.:
  *
@@ -16,9 +14,14 @@ import type { Model } from "@openxyz/runtime/openxyz";
  *
  * **Provider keys match models.dev provider IDs** — same string names the
  * filename (`providers/<key>.ts`), the switch-case below, and the lookup
- * passed to `lookupContextLimit` inside the provider. See mnemonic/087.
+ * passed to `lookupLimit` inside the provider. See mnemonic/087.
+ *
+ * The factory returns the provider's decorated `LanguageModel` (raw ai-sdk
+ * model + `.limit` attached via `Object.assign`). `loadModel` reads that at
+ * the facade boundary. Return type inferred — there's no public symbol for
+ * the intersection and it's implementation-detail.
  */
-export default async function auto(): Promise<Model> {
+export default async function auto() {
   if (process.env.OPENXYZ_MODEL === undefined) {
     throw new Error("OPENXYZ_MODEL environment variable is not set");
   }

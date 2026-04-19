@@ -1,5 +1,4 @@
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
-import type { ModelExport } from "../../bin/load-model";
 import { lookupLimit } from "../_models-dev";
 
 // opencode.ai's hosted OpenAI-compatible gateway (mnemonic/025).
@@ -20,7 +19,7 @@ const zen = createOpenAICompatible({
  * key; undefined if unlisted (fail-open, universal 40K threshold applies).
  * No `systemPrompt` — runtime falls back to its default.
  */
-export default async function opencode(modelId: string): Promise<ModelExport> {
+export default async function opencode(modelId: string) {
   return Object.assign(zen(modelId), {
     limit: await lookupLimit("opencode", modelId),
   });

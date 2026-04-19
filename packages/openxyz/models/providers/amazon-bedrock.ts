@@ -1,6 +1,5 @@
 import { bedrock as aws } from "@ai-sdk/amazon-bedrock";
 import { wrapLanguageModel } from "ai";
-import type { ModelExport } from "../../bin/load-model";
 import { cacheMiddleware } from "./_cache";
 import { lookupLimit } from "../_models-dev";
 
@@ -18,7 +17,7 @@ import { lookupLimit } from "../_models-dev";
  *
  * Usage: `bedrock("zai.glm-4.7")` — see AWS docs for available model ids.
  */
-export default async function bedrock(modelId: string): Promise<ModelExport> {
+export default async function bedrock(modelId: string) {
   return Object.assign(wrapLanguageModel({ model: aws(modelId), middleware: cacheMiddleware("bedrock") }), {
     limit: await lookupLimit("amazon-bedrock", modelId),
   });

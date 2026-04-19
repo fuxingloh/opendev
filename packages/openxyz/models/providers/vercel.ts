@@ -1,5 +1,4 @@
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
-import type { ModelExport } from "../../bin/load-model";
 import { lookupLimit } from "../_models-dev";
 
 // Vercel AI Gateway — routes provider-prefixed model ids (e.g. "anthropic/claude-sonnet-4-5").
@@ -18,7 +17,7 @@ const gateway = createOpenAICompatible({
  * `limit` resolved from models.dev (`vercel` provider key). No
  * `systemPrompt` — runtime falls back to its default.
  */
-export default async function vercel(modelId: string): Promise<ModelExport> {
+export default async function vercel(modelId: string) {
   return Object.assign(gateway(modelId), {
     limit: await lookupLimit("vercel", modelId),
   });

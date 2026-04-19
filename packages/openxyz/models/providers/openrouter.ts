@@ -1,5 +1,4 @@
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
-import type { ModelExport } from "../../bin/load-model";
 import { lookupLimit } from "../_models-dev";
 
 // OpenRouter's OpenAI-compatible gateway. Requires `OPENROUTER_API_KEY`.
@@ -19,7 +18,7 @@ const or = createOpenAICompatible({
  * `limit` resolved from models.dev (`openrouter` provider key). No
  * `systemPrompt` — runtime falls back to its default.
  */
-export default async function openrouter(modelId: string): Promise<ModelExport> {
+export default async function openrouter(modelId: string) {
   return Object.assign(or(modelId), {
     limit: await lookupLimit("openrouter", modelId),
   });
