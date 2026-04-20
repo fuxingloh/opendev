@@ -12,6 +12,10 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 You MUST ALWAYS look at mnemonic/\* when writing a new feature or bugfix.
 
+## External references
+
+- **Linear** — issues use the `OXYZ-*` prefix (team `openxyz`). Use the `linear-server` MCP tools to look up, update, or create issues when the user mentions an `OXYZ-nn` identifier.
+
 ## What OpenXyz is
 
 OpenXyz is an AI agent harness for human workflows — **not** a coding tool. A platform for building personal assistants (chief-of-staff, janitor, researcher) that a user talks to through multiple channels (Telegram, terminal, more later) backed by one shared AI agent session. The AI lives in a virtual filesystem it can self-modify (write its own tools, skills, agents, channels).
