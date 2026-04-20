@@ -127,15 +127,15 @@
     },
   },
   "patchedDependencies": {
-    "@chat-adapter/telegram@4.25.0": "patches/chat-adapter-telegram@4.25.0.patch",
+    "@chat-adapter/telegram@4.26.0": "patches/chat-adapter-telegram@4.26.0.patch",
   },
   "catalog": {
     "@ai-sdk/provider": "3.0.8",
-    "@chat-adapter/state-pg": "4.25.0",
-    "@chat-adapter/state-redis": "4.25.0",
-    "@chat-adapter/telegram": "4.25.0",
+    "@chat-adapter/state-pg": "4.26.0",
+    "@chat-adapter/state-redis": "4.26.0",
+    "@chat-adapter/telegram": "4.26.0",
     "ai": "6.0.161",
-    "chat": "4.25.0",
+    "chat": "4.26.0",
   },
   "packages": {
     "@ai-sdk/amazon-bedrock": ["@ai-sdk/amazon-bedrock@4.0.93", "", { "dependencies": { "@ai-sdk/anthropic": "3.0.69", "@ai-sdk/provider": "3.0.8", "@ai-sdk/provider-utils": "4.0.23", "@smithy/eventstream-codec": "^4.0.1", "@smithy/util-utf8": "^4.0.0", "aws4fetch": "^1.0.20" }, "peerDependencies": { "zod": "^3.25.76 || ^4.1.8" } }, "sha512-hcXDU8QDwpAzLVTuY932TQVlIij9+iaVTxc5mPGY6yb//JMAAC5hMVhg93IrxlrxWLvMgjezNgoZGwquR+SGnw=="],
@@ -164,13 +164,13 @@
 
     "@borewit/text-codec": ["@borewit/text-codec@0.2.2", "", {}, "sha512-DDaRehssg1aNrH4+2hnj1B7vnUGEjU6OIlyRdkMd0aUdIUvKXrJfXsy8LVtXAy7DRvYVluWbMspsRhz2lcW0mQ=="],
 
-    "@chat-adapter/shared": ["@chat-adapter/shared@4.25.0", "", { "dependencies": { "chat": "4.25.0" } }, "sha512-NoRjEqNN1fyOTwT3AXNXjoy88QHk7FxhQxRus9JdEZBBYsDEuP4B8ekN+BVLQD/rlPcDgQ5TN0UGuiOi9r5nZQ=="],
+    "@chat-adapter/shared": ["@chat-adapter/shared@4.26.0", "", { "dependencies": { "chat": "4.26.0" } }, "sha512-YD0MGktFXrArUqTBsyPfL5vkdD1WBS58PAWO0oVrMQAMmPxpAXfWGjBtZCkf3y8R8Svb0uVuVXiMZSForaEnMQ=="],
 
-    "@chat-adapter/state-pg": ["@chat-adapter/state-pg@4.25.0", "", { "dependencies": { "chat": "4.25.0", "pg": "^8.20.0" } }, "sha512-S2kZCIRm1tZg/srG8q491cLhZ/dbHRAROIskfasTGh46xyqgIWubVrlD4e8RhMfFwmbGdK4mLKzvvjhU5z4XtQ=="],
+    "@chat-adapter/state-pg": ["@chat-adapter/state-pg@4.26.0", "", { "dependencies": { "chat": "4.26.0", "pg": "^8.20.0" } }, "sha512-YnLDURfimQfZx7qeqoN2IdFpOH0xk4DUQcIDvNNnsgId6z40Lh4CyJqoZpiHE+y8EHAy3kJf43plWfxJVuB50A=="],
 
-    "@chat-adapter/state-redis": ["@chat-adapter/state-redis@4.25.0", "", { "dependencies": { "chat": "4.25.0", "redis": "^5.11.0" } }, "sha512-XHZ6Kv9vbKP19YaRKXaurnsxzizHpQOkfY0P4JPS8oEGVKSCJ5a9ZEnlsT3guLG8zcO6cFqNR2Br+PmX6fh1Dw=="],
+    "@chat-adapter/state-redis": ["@chat-adapter/state-redis@4.26.0", "", { "dependencies": { "chat": "4.26.0", "redis": "^5.11.0" } }, "sha512-NSX2E6wkDlg0AMfKFx4LPoV6cBHolL08Ht3cT+S01jss24t9GzlDw/BUsrWOeoTElwEhxZcQw5bUkStUAA7JMg=="],
 
-    "@chat-adapter/telegram": ["@chat-adapter/telegram@4.25.0", "", { "dependencies": { "@chat-adapter/shared": "4.25.0", "chat": "4.25.0" } }, "sha512-7qlscK7BJLQUELXgKssw9tJ1zjMq99w4772non0xBlHjyKvej+1nQxtl8R1eQ6dk9djErXfWGsFBj5t1J4GS4w=="],
+    "@chat-adapter/telegram": ["@chat-adapter/telegram@4.26.0", "", { "dependencies": { "@chat-adapter/shared": "4.26.0", "chat": "4.26.0" } }, "sha512-PE2HoCQ4648VNKZTuHFanQNoYzM/niNoSbDyYlPq6VOoB5qsoo1ctR8TERyl1EfPBNexWZpSWYrrnQPr15LUfA=="],
 
     "@electric-sql/pglite": ["@electric-sql/pglite@0.4.4", "", {}, "sha512-g/6CWAJ4XOkObWCWAQ2IReZD8VvsDy3poRHSKvpRR2F96F8WJ3HVbjpso3gN7l0q6QPPgvxSSpl/qo5k8a7mkQ=="],
 
@@ -350,7 +350,7 @@
 
     "character-entities": ["character-entities@2.0.2", "", {}, "sha512-shx7oQ0Awen/BRIdkjkvz54PnEEI/EjwXDSIZp86/KKdbafHh1Df/RYGBhn4hbe2+uKC9FnT5UCEdyPz3ai9hQ=="],
 
-    "chat": ["chat@4.25.0", "", { "dependencies": { "@workflow/serde": "4.1.0-beta.2", "mdast-util-to-string": "^4.0.0", "remark-gfm": "^4.0.0", "remark-parse": "^11.0.0", "remark-stringify": "^11.0.0", "remend": "^1.2.1", "unified": "^11.0.5" } }, "sha512-QM8ex4Gpn8zYIPyQXh41Who6R9Wq3WcQeOjAy4EuR1m1ha0tASuzHkLQfjaTAGLgrgrThV0Zh5KKoH0S92iwNA=="],
+    "chat": ["chat@4.26.0", "", { "dependencies": { "@workflow/serde": "4.1.0-beta.2", "mdast-util-to-string": "^4.0.0", "remark-gfm": "^4.0.0", "remark-parse": "^11.0.0", "remark-stringify": "^11.0.0", "remend": "^1.2.1", "unified": "^11.0.5" } }, "sha512-QToDnIEGpyb8yQA6YLMHOSRK30YVk4RtsyFyuWFYyB2c4jQlyIrSWtwVK7qyvmvqzQp9uDwCdJRAhS8GtCHAGQ=="],
 
     "chownr": ["chownr@1.1.4", "", {}, "sha512-jJ0bqzaylmJtVnNgzTeSOs8DPavpbYgEr/b0YL8/2GO3xJEhInFmhKMUnEJQjZumK7KXGFhUy89PrsJWlakBVg=="],
 
