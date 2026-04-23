@@ -56,6 +56,18 @@ function toolResult(id: string, toolName: string, value: string): ModelMessage {
   };
 }
 
+function parallelToolResults(parts: Array<{ id: string; toolName: string; value: string }>): ModelMessage {
+  return {
+    role: "tool",
+    content: parts.map(({ id, toolName, value }) => ({
+      type: "tool-result",
+      toolCallId: id,
+      toolName,
+      output: { type: "text", value },
+    })),
+  };
+}
+
 describe("Session", () => {
   test("messages — empty when no state", async () => {
     const session = new Session(makeThread(), "thread");
@@ -158,6 +170,50 @@ describe("Session", () => {
     const msgs = await session.messages();
     const out = (msgs[0] as { content: Array<{ output: { value: string } }> }).content[0]!.output.value;
     expect(out).toBe(body);
+  });
+
+  test("append — parallel tool-results in one message each get pruned independently", async () => {
+    // streamText fans out parallel tool calls via Promise.all; results land as
+    // multiple tool-result parts on a single `tool` message. Prune must hit
+    // each part independently.
+    const session = new Session(makeThread(), "thread");
+    await session.append([
+      parallelToolResults([
+        { id: "t1", toolName: "web_fetch", value: "A".repeat(1_000) },
+        { id: "t2", toolName: "bash", value: "B".repeat(2_000) },
+        { id: "t3", toolName: "read", value: "C".repeat(500) },
+      ]),
+    ]);
+    await session.append([userMsg("next")]);
+    const parts = (
+      (await session.messages())[0] as { content: Array<{ toolCallId: string; output: { value: string } }> }
+    ).content;
+    expect(parts.length).toBe(3);
+    for (const part of parts) expect(part.output.value).toMatch(/^\[pruned \d+ bytes]$/);
+    expect(parts.map((p) => p.toolCallId)).toEqual(["t1", "t2", "t3"]);
+  });
+
+  test("append — mixed parallel batch: never-prune tools survive, rest get stubbed", async () => {
+    const session = new Session(makeThread(), "thread");
+    const skillBody = "# skill instructions body";
+    const delegateReport = "<delegate_result>done</delegate_result>";
+    await session.append([
+      parallelToolResults([
+        { id: "t1", toolName: "bash", value: "X".repeat(1_000) },
+        { id: "t2", toolName: "skill", value: skillBody },
+        { id: "t3", toolName: "web_fetch", value: "Y".repeat(1_000) },
+        { id: "t4", toolName: "delegate", value: delegateReport },
+      ]),
+    ]);
+    await session.append([userMsg("next")]);
+    const parts = (
+      (await session.messages())[0] as { content: Array<{ toolCallId: string; output: { value: string } }> }
+    ).content;
+    const byId = Object.fromEntries(parts.map((p) => [p.toolCallId, p.output.value]));
+    expect(byId.t1).toMatch(/^\[pruned \d+ bytes]$/);
+    expect(byId.t2).toBe(skillBody);
+    expect(byId.t3).toMatch(/^\[pruned \d+ bytes]$/);
+    expect(byId.t4).toBe(delegateReport);
   });
 
   test("append — `delegate` tool outputs are NOT pruned (subagent report)", async () => {
