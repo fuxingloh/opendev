@@ -174,6 +174,24 @@ Never comment what the code already says. `// increment counter` above `i++` add
 
 When in doubt, ask: "could a future maintainer reconstruct this reasoning from a clean read of the code?" If yes, skip the comment. If no, write it — and keep it tight.
 
+## Testing
+
+Write tests as you implement features. Not after. Not "if there's time." If the logic is non-trivial — a new class, a state machine, a parser, a slicing helper, anything with invariants a future refactor could silently break — it ships with a test file.
+
+- Co-locate tests in `*.test.ts` next to the source they exercise.
+- Use `bun:test` — `describe` / `test` / `expect`. No jest, no separate runner.
+- Run with `bun run test` (turbo, whole repo) or `bun test <path>` (single file, fast iteration).
+
+**Cover invariants, not lines.** The test should describe a property the code must uphold — "never orphans a tool-result", "fails open on downstream error", "is idempotent on re-entry" — and fail the day someone breaks it. Coverage percentage isn't the goal; catching regressions in load-bearing contracts is.
+
+**One invariant per `test("…")`.** The test name describes the property, not the mechanics ("rejects on expired token", not "calls verify() then throws"). Arrange shared helpers at the top of the file.
+
+**Prefer testing at module boundaries** — public functions, exported classes, pure helpers. For module-private helpers worth testing directly, export them with a `// Exported for testing — treat as internal.` doc line rather than inventing a parallel test seam.
+
+**For AI SDK / chat-sdk / external integration points**, mock at the narrowest interface you can (e.g. `MockLanguageModelV3.doGenerate` over full stream mocking). Heavy mocks are a smell — they usually mean the seam is wrong. If the setup balloons, consider whether the unit under test should be smaller.
+
+When you can't reasonably test something (streaming integration, cross-process coordination, external APIs), say so in the PR — don't pretend it's covered. Write a followup task instead.
+
 ## Working style
 
 - Terse, direct responses — no preamble, **no emojis**
