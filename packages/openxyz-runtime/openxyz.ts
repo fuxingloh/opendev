@@ -84,7 +84,7 @@ export class OpenXyz {
       // bug like pure `debounce`. Lets the agent respond to "three messages
       // in 1s" as one turn instead of 1 | 2+3. Cost: +1s baseline latency on
       // every DM, including lone messages. Acceptable for an assistant.
-      concurrency: { strategy: "queue-debounce", debounceMs: 1000 },
+      concurrency: { strategy: "queue-debounce", debounceMs: 500 },
       userName: "openxyz",
       logger: "info",
       fallbackStreamingPlaceholderText: null,
