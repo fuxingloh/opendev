@@ -173,6 +173,30 @@ export async function generateEntrypoint(
   body.push(`  async fetch(request: Request): Promise<Response> {`);
   body.push(`    const { pathname } = new URL(request.url);`);
   body.push(`    console.log(\`[openxyz] fetch \${request.method} \${pathname}\`);`);
+  // Probe: verify whether Vercel's Bun launcher installs the
+  // `@vercel/request-context` global (the hook `@vercel/functions.waitUntil`
+  // looks up). If all four flags are true AND the 45s-deferred log fires,
+  // waitUntil is honored and we can drop the inline-await belt below.
+  // See mnemonic/069, /070.
+  body.push(`    const __probeStart = Date.now();`);
+  body.push(`    const __ctx = (globalThis as any)[Symbol.for("@vercel/request-context")];`);
+  body.push(`    const __resolved = __ctx?.get?.();`);
+  body.push(
+    `    console.log(\`[probe] ctx-present=\${!!__ctx} has-get=\${typeof __ctx?.get === "function"} resolved=\${!!__resolved} has-waitUntil=\${typeof __resolved?.waitUntil === "function"}\`);`,
+  );
+  body.push(`    const __probeId = Math.random().toString(36).slice(2, 8);`);
+  body.push(`    console.log(\`[probe] \${__probeId} scheduling 45s waitUntil\`);`);
+  body.push(`    try {`);
+  body.push(`      waitUntil(`);
+  body.push(`        new Promise<void>((r) => setTimeout(r, 45_000)).then(() => {`);
+  body.push(
+    `          console.log(\`[probe] \${__probeId} fired at +\${Date.now() - __probeStart}ms (waitUntil is honored)\`);`,
+  );
+  body.push(`        }),`);
+  body.push(`      );`);
+  body.push(`    } catch (err) {`);
+  body.push(`      console.log(\`[probe] \${__probeId} waitUntil threw: \${String(err)}\`);`);
+  body.push(`    }`);
   body.push(`    const match = pathname.match(/^\\/api\\/webhooks\\/([^/]+)\\/?$/);`);
   body.push(`    if (!match) return new Response("not found", { status: 404 });`);
   body.push(`    const handler = openxyz.webhooks[match[1]!];`);
