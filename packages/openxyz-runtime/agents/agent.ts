@@ -12,59 +12,71 @@ import type { SkillDef } from "../tools/skill";
 import type { AgentDef, AgentFactory } from "./factory";
 
 // ─────────────────────────────────────────────────────────────────────────
-// Token-budget constants. Reserve-based (mnemonic/099 — opencode pattern):
+// Token-budget constants. Reserve-based (mnemonic/099 — opencode pattern,
+// extended in mnemonic/101 to prefer explicit `limit.input`):
 //
 //   Compaction trigger (pre-stream + mid-stream, same threshold):
-//     reserve = min(COMPACT_RESERVE, model.limit.output ?? COMPACT_RESERVE)
-//     #compactThreshold = max(1, model.limit.context − reserve)
-//     → "leave enough room for the model's next response; only compact
-//       when the prompt is about to crowd that reserve."
+//     if limit.input is set:                            ← provider-declared
+//       #compactThreshold = max(1, limit.input − COMPACT_INPUT_BUFFER)
+//       → input already excludes output; only subtract a small absolute
+//         buffer for tool-call round-trip overhead + bytes/4 drift.
+//     else:                                             ← derive from context
+//       reserve  = min(COMPACT_CONTEXT_RESERVE, limit.output ?? COMPACT_CONTEXT_RESERVE)
+//       #compactThreshold = max(1, limit.context − reserve)
+//       → reserve output room + drift buffer in one slot, since output
+//         hasn't been carved upstream.
 //
 //   Compact-agent input cap (capacity of the compact agent ITSELF):
-//     #compactInputCap = ⌊COMPACT_INPUT_RATIO × model.limit.context⌋
+//     #compactInputCap = ⌊COMPACT_INPUT_RATIO × limit.context⌋
 //     → orthogonal to WHEN we compact — this is what the compact agent
 //       can chew in one `generate()` call without blowing its own window.
 //
-// Concrete per-model (assumes models.dev populates `output`):
+// Concrete per-model (assumes models.dev populates `input` + `output`):
 //
-//   model            | context | output  | reserve | threshold | inputCap
-//   -----------------|---------|---------|---------|-----------|---------
-//   tiny             |     32K |     4K  |     4K  |      28K  |     24K
-//   Sonnet 4.6       |    200K |     8K  |     8K  |     192K  |    150K
-//   Opus 4.7 (1M)    |      1M |    32K  |    32K  |     968K  |    750K
-//   unknown output   |      1M |    —    |    40K  |     960K  |    750K
+//   model            | context | input   | output | threshold | inputCap
+//   -----------------|---------|---------|--------|-----------|---------
+//   tiny (no input)  |     32K |    —    |     4K |      28K  |     24K
+//   Sonnet 4.6       |    200K |   200K  |     8K |     180K  |    150K
+//   Opus 4.7 (1M)    |      1M |     1M  |    32K |     980K  |    750K
+//   unknown output   |      1M |    —    |     —  |     960K  |    750K
 //
 // Headroom:
-//   • Threshold always leaves AT LEAST `reserve` tokens for the model's
-//     next response. No more "leaves 95% of context unused on big models"
-//     (old flat 40K problem, mnemonic/099).
+//   • `input` path: leaves COMPACT_INPUT_BUFFER (20K) for drift + tool
+//     round-trip. Output carve-out trusted to the provider's declared
+//     `input`. No double-counting.
+//   • `context` path: reserves `min(40K, output)` for the response. Used
+//     when `input` is unknown — conservative since we don't know how the
+//     provider splits the window.
 //   • #compactInputCap: what the compact agent can absorb in one call.
 //     On big models with high thresholds, compact-input cap < threshold
 //     is fine — the `toSummarize` gets hardTruncate'd before handoff,
 //     dropping oldest content (which is typically already pruned).
 //   • Model ceiling is the hard wall nothing gets past.
 //
-// Pathological edge case: `context < reserve` (e.g. 32K ctx + unknown
-// output falling back to 40K reserve) → threshold clamps to 1 via
-// `max(1, …)` → every turn compacts. Workaround: template sets
-// `limit.output` explicitly. Won't happen on any shipped provider
-// (models.dev populates both `context` and `output`).
+// Pathological edge case: `context < reserve` or `input < buffer` → threshold
+// clamps to 1 via `max(1, …)` → every turn compacts. Workaround: template
+// sets `limit.output` / `limit.input` to something sane. Won't happen on
+// any shipped provider.
 // ─────────────────────────────────────────────────────────────────────────
 
 /**
- * Reserve — target headroom (in tokens) to leave between the compacted
- * prompt and the model's context ceiling. Sized so the model has room to
- * emit its next response + a tool-call/tool-result round-trip without
- * the turn blowing the window.
+ * Reserve — target headroom when deriving threshold from `limit.context`
+ * (i.e. `limit.input` is not set). Sized so the model has room to emit
+ * its next response + a tool-call/tool-result round-trip without the turn
+ * blowing the window.
  *
- * Per-Agent derivation (in the constructor):
- *   reserve = min(COMPACT_RESERVE, model.limit.output ?? COMPACT_RESERVE)
- *   #compactThreshold = max(1, model.limit.context − reserve)
+ * Derivation (context path only):
+ *   reserve = min(COMPACT_CONTEXT_RESERVE, limit.output ?? COMPACT_CONTEXT_RESERVE)
+ *   #compactThreshold = max(1, limit.context − reserve)
  *
  * The `min(...)` with `output` caps the reserve at the model's actual
  * max-output capacity — no point reserving 40K on a model that only emits
  * 8K. Matches opencode's `reserved = min(COMPACTION_BUFFER, maxOutputTokens)`
  * (mnemonic/099, opencode `overflow.ts:17`).
+ *
+ * Not used on the `input` path — when a provider declares `limit.input`,
+ * output is already carved out upstream and only `COMPACT_INPUT_BUFFER`
+ * applies (mnemonic/101 addendum).
  *
  * Between-turn trigger (pre-stream, once per turn — `#compactSession`):
  *   estimateTokens(session) × SAFETY_MARGIN  ≥  #compactThreshold
@@ -75,15 +87,22 @@ import type { AgentDef, AgentFactory } from "./factory";
  *   where effective = fence
  *                       ? [fence.summary, ...messages[fence.untilIdx..]]
  *                       : messages
- *
- * Rationale for reserve-based (vs flat-40K, vs ratio × context):
- *   - Uses the capacity the model actually has — 1M-context models stop
- *     leaving 960K on the floor (old flat-40K problem, mnemonic/099).
- *   - Invariant users actually care about: "model always has room to
- *     respond", not "conversation stays below N tokens."
- *   - Matches opencode's production design — proven at scale.
  */
-const COMPACT_RESERVE = 40_000;
+const COMPACT_CONTEXT_RESERVE = 40_000;
+
+/**
+ * Small absolute buffer subtracted from `limit.input` when the provider
+ * declares it explicitly (mnemonic/101 addendum). Covers:
+ *   - tool-call / tool-result round-trip overhead for the step after
+ *     the compaction fires
+ *   - bytes/4 tokenizer drift on tool-heavy transcripts (complements
+ *     the `SAFETY_MARGIN = 1.2` multiplier at comparison time)
+ *
+ * Matches opencode's `COMPACTION_BUFFER = 20_000` (mnemonic/099,
+ * `overflow.ts:6`). Fixed absolute rather than a % — round-trip overhead
+ * and estimate drift are roughly constant regardless of model size.
+ */
+const COMPACT_INPUT_BUFFER = 20_000;
 
 /**
  * Compact-agent input ratio — fraction of the model's context window the
@@ -180,9 +199,13 @@ export class Agent {
   readonly #inner: ToolLoopAgent;
 
   /**
-   * Compaction trigger for both between-turn and mid-turn paths. Derived
-   * from `config.model.limit.context − reserve` at construction; see the
-   * constant block header for the reserve formula and rationale.
+   * Compaction trigger for both between-turn and mid-turn paths. Two-path
+   * derivation at construction:
+   *   - `limit.input − COMPACT_INPUT_BUFFER` when `input` is declared
+   *   - `limit.context − min(COMPACT_CONTEXT_RESERVE, output ?? COMPACT_CONTEXT_RESERVE)`
+   *     otherwise
+   * See the constant block header for rationale (no double-counting of
+   * output when provider already carves it out).
    */
   readonly #compactThreshold: number;
 
@@ -221,13 +244,21 @@ export class Agent {
     this.name = config.def.name;
     this.#factory = config.factory;
 
-    // Reserve-based threshold — cap the reserve at the model's actual max
-    // output so we don't over-reserve on models that can't emit that much
-    // anyway. Unknown output → full COMPACT_RESERVE, which is safe except
-    // on pathologically tiny context (see header block).
+    // Two-path threshold (mnemonic/101):
+    //   - `limit.input` declared → trust it as the input ceiling, subtract
+    //     only COMPACT_INPUT_BUFFER for tool-round-trip + drift. Output is
+    //     already carved out by the provider; no double-counting.
+    //   - else → derive from context, reserving output room + drift in one
+    //     slot (`min(40K, output ?? 40K)`).
     const context = config.model.limit.context;
-    const reserve = Math.min(COMPACT_RESERVE, config.model.limit.output ?? COMPACT_RESERVE);
-    this.#compactThreshold = Math.max(1, context - reserve);
+    const input = config.model.limit.input;
+    this.#compactThreshold =
+      input !== undefined
+        ? Math.max(1, input - COMPACT_INPUT_BUFFER)
+        : Math.max(
+            1,
+            context - Math.min(COMPACT_CONTEXT_RESERVE, config.model.limit.output ?? COMPACT_CONTEXT_RESERVE),
+          );
     this.#compactInputCap = Math.floor(context * COMPACT_INPUT_RATIO);
 
     this.#inner = new ToolLoopAgent({

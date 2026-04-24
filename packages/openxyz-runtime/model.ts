@@ -43,13 +43,23 @@ export type Model = {
   limit: {
     context: number;
     /**
+     * Max input tokens the provider will accept for the prompt. When
+     * present, this is the authoritative compaction ceiling — Agent
+     * prefers `input − reserve` over `context − reserve` so models that
+     * carve output space out of the window explicitly (i.e. `input <
+     * context`) get the right budget. On most models.dev entries today
+     * `input === context`; the field is future-proofing + provenance.
+     * See mnemonic/101.
+     */
+    input?: number;
+    /**
      * Max output tokens per response. Used to size the reserve headroom
-     * for compaction (Agent `#compactThreshold = context − min(reserve, output)`)
+     * for compaction (Agent `#compactThreshold = ceiling − min(reserve, output)`)
      * so the prompt never crowds out the response the model is about to
      * generate. Optional — Agent falls back to the reserve default when
      * missing. Populated by the models.dev lookup in shipped providers,
-     * or set explicitly via `export const limit = { context, output }` in
-     * a template's `models/<name>.ts`.
+     * or set explicitly via `export const limit = { context, input?, output? }`
+     * in a template's `models/<name>.ts`.
      */
     output?: number;
   };
