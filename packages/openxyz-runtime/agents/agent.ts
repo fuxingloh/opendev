@@ -157,10 +157,14 @@ const MAX_STEPS = 100;
 
 /**
  * Runtime agent — wraps an `ai` SDK `ToolLoopAgent` with:
- *  - per-step session persistence (crash-safety within a turn)
  *  - between-turn session compaction (keeps next-turn prompt cheap)
  *  - mid-turn prompt compaction (keeps THIS turn alive past model ceiling)
  *  - max-step guard forcing a text-only summary on the final step
+ *
+ * Session persistence is one append per turn — user messages appended at
+ * `run()` start, agent response messages appended after the stream settles.
+ * Mid-turn crashes lose the turn's work; traded per-step crash-recovery for
+ * simpler semantics and N× fewer state round-trips per turn.
  *
  * Instances are turn-scoped: the compaction fence lives in the instance and
  * is only safe for one concurrent `run()`. `openxyz.ts#onMessages` creates a
@@ -296,28 +300,19 @@ export class Agent {
     // env annotations live on the user messages themselves (channel concern).
     const prompt: ModelMessage[] = [system, ...history];
 
-    // Per-step persistence: each completed step's messages land in the
-    // session log the moment the step finishes. `step.response.messages` is
-    // cumulative (ai/.../stream-text.ts:1098 — [...recordedResponseMessages,
-    // ...stepMessages]), so slice the delta since the last append.
-    let appended = 0;
     this.#fence = undefined;
 
     try {
-      const result = await this.#inner.stream({
-        prompt,
-        onStepFinish: async (step) => {
-          const delta = step.response.messages.slice(appended);
-          appended = step.response.messages.length;
-          if (delta.length === 0) return;
-          try {
-            await session.append(delta as ModelMessage[]);
-          } catch (err) {
-            console.error("[openxyz] per-step session.append failed", err);
-          }
-        },
-      });
+      const result = await this.#inner.stream({ prompt });
+      // Consume fullStream first (renders to chat-sdk thread = UI ledger), then
+      // await response.messages to capture the full agent ledger. AI SDK ties
+      // the two together — reading either consumes the stream — so the
+      // ordering is load-bearing. One append per turn; crash mid-stream loses
+      // the turn's work, but the state round-trips collapse from N (one per
+      // step) down to one.
       await thread.post(result.fullStream);
+      const response = await result.response;
+      await session.append(response.messages as ModelMessage[]);
     } catch (err) {
       console.error(`[openxyz] agent "${this.name}" run failed`, err);
       const msg = err instanceof Error ? err.message : String(err);
