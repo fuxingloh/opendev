@@ -42,5 +42,15 @@ export type Model = {
    */
   limit: {
     context: number;
+    /**
+     * Max output tokens per response. Used to size the reserve headroom
+     * for compaction (Agent `#compactThreshold = context − min(reserve, output)`)
+     * so the prompt never crowds out the response the model is about to
+     * generate. Optional — Agent falls back to the reserve default when
+     * missing. Populated by the models.dev lookup in shipped providers,
+     * or set explicitly via `export const limit = { context, output }` in
+     * a template's `models/<name>.ts`.
+     */
+    output?: number;
   };
 };
