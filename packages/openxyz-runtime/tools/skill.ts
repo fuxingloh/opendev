@@ -1,3 +1,4 @@
+import { readdirSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { tool } from "ai";
 import { z } from "zod";
@@ -45,11 +46,11 @@ export function createSkillTool(skills: SkillDef[]) {
       }
 
       const dir = dirname(skill.location);
-      const glob = new Bun.Glob("*");
       const files: string[] = [];
-      for await (const rel of glob.scan({ cwd: dir })) {
-        if (rel === "SKILL.md") continue;
-        files.push(join(dir, rel));
+      for (const entry of readdirSync(dir, { withFileTypes: true })) {
+        if (!entry.isFile()) continue;
+        if (entry.name === "SKILL.md") continue;
+        files.push(join(dir, entry.name));
         if (files.length >= 10) break;
       }
 

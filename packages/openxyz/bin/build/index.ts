@@ -70,8 +70,8 @@ export async function buildVercel(cwd: string): Promise<void> {
     JSON.stringify(
       {
         handler: "server.js",
-        runtime: "bun1.x",
-        launcherType: "Bun",
+        runtime: "nodejs22.x",
+        launcherType: "Nodejs",
         shouldAddHelpers: true,
         shouldAddSourcemapSupport: true,
         // LLM streams + tool loops can run long. Vercel's hard cap is 300s

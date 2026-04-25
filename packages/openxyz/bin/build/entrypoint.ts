@@ -68,7 +68,7 @@ export async function generateEntrypoint(
   // Drives: WorkspaceDrive is always mounted at /workspace (runtime-intercepted
   // by `inMemoryWorkspacePlugin` for the packed snapshot). Template-provided
   // `drives/<name>.ts` files mount at `/mnt/<name>/`.
-  const driveEntries: string[] = [`  "/workspace": new WorkspaceDrive(import.meta.dir, "read-write"),`];
+  const driveEntries: string[] = [`  "/workspace": new WorkspaceDrive(import.meta.dirname, "read-write"),`];
   Object.entries(t.drives).forEach(([name, path], i) => {
     const id = `__drive${i}`;
     imports.push(`import ${id} from ${JSON.stringify(toRel(abs(path)))};`);
@@ -144,7 +144,7 @@ export async function generateEntrypoint(
   body.push(``);
   body.push(`const openxyz = new OpenXyz({`);
   // Runtime cwd = function directory on Vercel, not the build machine's path.
-  body.push(`  cwd: import.meta.dir,`);
+  body.push(`  cwd: import.meta.dirname,`);
   body.push(channelEntries.length > 0 ? `  channels: {\n${channelEntries.join("\n")}\n  },` : `  channels: {},`);
   body.push(`  tools: __tools,`);
   body.push(`  cleanup: __toolCleanup,`);
@@ -162,22 +162,16 @@ export async function generateEntrypoint(
   body.push(`const db = await getDb(openxyz.cwd);`);
   body.push(`await openxyz.init({ state: new TursoStateAdapter({ client: db }) });`);
   body.push(``);
-  // `waitUntil` is the load-bearing bit on Vercel. chat-sdk dispatches
-  // messages as fire-and-forget background tasks (chat.ts `processMessage`);
-  // without waitUntil the lambda dies as soon as the 200 response ships,
-  // cutting the agent stream short. Uses `@vercel/functions.waitUntil`;
-  // per Vercel docs the Bun runtime runs on Fluid Compute "and supports the
-  // same core Vercel Functions features" as Node.js. Requires Fluid Compute
-  // to be enabled on the project (Dashboard → Settings → Functions).
+  // Node runtime (mnemonic/069 follow-up): `@vercel/functions.waitUntil`
+  // honors the lifetime contract here — the function stays alive until every
+  // scheduled promise resolves or `maxDuration` hits. chat-sdk dispatches the
+  // agent turn as a background task via `processMessage`; we just hand it
+  // through. The probe stays for one validation deploy to confirm the 45s
+  // log fires, then gets stripped in a follow-up.
   body.push(`export default {`);
   body.push(`  async fetch(request: Request): Promise<Response> {`);
   body.push(`    const { pathname } = new URL(request.url);`);
   body.push(`    console.log(\`[openxyz] fetch \${request.method} \${pathname}\`);`);
-  // Probe: verify whether Vercel's Bun launcher installs the
-  // `@vercel/request-context` global (the hook `@vercel/functions.waitUntil`
-  // looks up). If all four flags are true AND the 45s-deferred log fires,
-  // waitUntil is honored and we can drop the inline-await belt below.
-  // See mnemonic/069, /070.
   body.push(`    const __probeStart = Date.now();`);
   body.push(`    const __ctx = (globalThis as any)[Symbol.for("@vercel/request-context")];`);
   body.push(`    const __resolved = __ctx?.get?.();`);
@@ -201,26 +195,7 @@ export async function generateEntrypoint(
   body.push(`    if (!match) return new Response("not found", { status: 404 });`);
   body.push(`    const handler = openxyz.webhooks[match[1]!];`);
   body.push(`    if (!handler) return new Response(\`unknown adapter: \${match[1]}\`, { status: 404 });`);
-  // Belt-and-braces: capture chat-sdk's background tasks in an array AND
-  // hand them to Vercel's waitUntil. On Bun runtime, waitUntil appears to
-  // only keep the function alive for a short grace period (~1-2s) after
-  // response, not through the full task lifetime. The inline Promise.all
-  // below holds the response until processing completes. Telegram webhooks
-  // tolerate slow responses up to ~75s; agent streams should finish well
-  // inside that window.
-  body.push(`    const tasks: Promise<unknown>[] = [];`);
-  body.push(`    const response = await handler(request, {`);
-  body.push(`      waitUntil: (task) => {`);
-  body.push(`        tasks.push(task);`);
-  body.push(`        waitUntil(task);`);
-  body.push(`      },`);
-  body.push(`    });`);
-  body.push(`    if (tasks.length > 0) {`);
-  body.push(`      console.log(\`[openxyz] awaiting \${tasks.length} background task(s) inline\`);`);
-  body.push(`      await Promise.allSettled(tasks);`);
-  body.push(`      console.log(\`[openxyz] tasks settled\`);`);
-  body.push(`    }`);
-  body.push(`    return response;`);
+  body.push(`    return handler(request, { waitUntil });`);
   body.push(`  },`);
   body.push(`};`);
 
