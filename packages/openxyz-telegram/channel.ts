@@ -62,7 +62,7 @@ export class TelegramChannel extends Channel<TelegramRaw> {
     return result as ModelMessage;
   }
 
-  async systemMessage(thread: Thread): Promise<SystemModelMessage> {
+  async getSystemMessage(thread: Thread): Promise<SystemModelMessage> {
     return {
       role: "system",
       content: thread.isDM ? `Telegram DM: ${thread.channel.name}` : `Telegram Group: ${thread.channel.name}`,
