@@ -42,7 +42,8 @@ export class TursoStateAdapter implements StateAdapter {
   }
 
   private serialize<T>(fn: () => Promise<T>): Promise<T> {
-    const next = this.txQueue.then(fn, fn);
+    const wrapped = () => withBusyRetry(fn);
+    const next = this.txQueue.then(wrapped, wrapped);
     this.txQueue = next.catch(() => undefined);
     return next;
   }
@@ -432,4 +433,32 @@ function decodeStored<T>(value: string): T {
   } catch {
     return value as unknown as T;
   }
+}
+
+/**
+ * Retry a database operation on `SQLITE_BUSY` with jittered exponential
+ * backoff. Cross-instance write contention (multiple Vercel functions
+ * writing to the same Turso DB) surfaces as BUSY — the in-process mutex
+ * can't serialize across instances. Caps at ~1.5s total before giving up.
+ */
+async function withBusyRetry<T>(fn: () => Promise<T>): Promise<T> {
+  const delays = [25, 50, 100, 200, 400, 800];
+  for (let i = 0; i <= delays.length; i++) {
+    try {
+      return await fn();
+    } catch (err) {
+      if (!isBusy(err) || i === delays.length) throw err;
+      const base = delays[i]!;
+      await new Promise((r) => setTimeout(r, base + Math.random() * base));
+    }
+  }
+  throw new Error("unreachable");
+}
+
+function isBusy(err: unknown): boolean {
+  if (typeof err !== "object" || err === null) return false;
+  const code = (err as { code?: unknown }).code;
+  if (code === "SQLITE_BUSY" || code === "SQLITE_LOCKED") return true;
+  const msg = (err as { message?: unknown }).message;
+  return typeof msg === "string" && /database is locked|SQLITE_BUSY|SQLITE_LOCKED/i.test(msg);
 }
