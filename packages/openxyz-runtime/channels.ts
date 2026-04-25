@@ -11,8 +11,6 @@ export type Message<Raw = unknown> = ChatSdkMessage<Raw>;
 export type ReplyAction = {
   /** What agent to route to for this reply. Undefined = do nothing. */
   agent?: string;
-  /** Whether to start the "typing indicator". */
-  typing?: string | boolean;
   /** Whether to add a reaction to the user's message. */
   reaction?: string;
 };
