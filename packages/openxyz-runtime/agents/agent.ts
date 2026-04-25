@@ -293,36 +293,28 @@ export class Agent {
 
   /**
    * Top-level turn — drives the full incoming-message flow:
-   *   channel.systemMessage + toModelMessage + getSession (parallel fetch) →
-   *   persist user turn → compact session if over threshold → stream →
-   *   per-step append → post to thread. Errors are caught and surfaced as a
-   *   fallback thread post so the caller (`onMessage`) can still run
-   *   drive.commit after `run()` returns.
+   *   channel.getSystemMessage + getSession (parallel fetch) → persist
+   *   user turn → compact session if over threshold → stream → per-step
+   *   append → post to thread. Errors are caught and surfaced as a
+   *   fallback thread post so the caller (`OpenXyz.dispatch`) can still
+   *   run drive.commit after `run()` returns.
    *
-   * `messages` is the full burst from `queue-debounce` (mnemonic/097) —
-   * typically `[...context.skipped, triggeringMessage]`. The triggering
-   * message (last in the array) is what `systemMessage` and `getSession`
-   * key off of.
+   * `message` is the merged user turn — `OpenXyz.onMessage` already folded
+   * the burst from `queue-debounce` (mnemonic/097) into a single
+   * `UserModelMessage` via `mergeUserMessages`, preserving per-platform-
+   * message annotation as content blocks.
    */
-  async run(input: { channel: Channel; thread: Thread; messages: Message[] }): Promise<void> {
-    const { channel, thread, messages } = input;
-    if (messages.length === 0) {
-      throw new Error(`[openxyz] agent "${this.name}" run() called with empty messages array`);
-    }
-    const triggering = messages[messages.length - 1]!;
+  async run(input: { channel: Channel; thread: Thread; message: ModelMessage }): Promise<void> {
+    const { channel, thread, message } = input;
 
     // Channel decides session scope (thread-scoped by default, channel-
-    // scoped for Telegram groups, etc.). `toModelMessage` converts each
-    // incoming platform message into a UserModelMessage with any platform-
-    // specific annotation (reply/forward XML, etc.). History lives in
-    // session, not the chat-sdk thread (mnemonic/081).
-    const [system, userMessages, session] = await Promise.all([
-      channel.systemMessage(thread, triggering),
-      Promise.all(messages.map((m) => channel.toModelMessage(thread, m))),
-      channel.getSession(thread, triggering),
-    ]);
+    // scoped for Telegram groups, etc.). History lives in session, not the
+    // chat-sdk thread (mnemonic/081).
+    const [system, session] = await Promise.all([channel.getSystemMessage(thread), channel.getSession(thread)]);
 
-    await session.append(userMessages);
+    await session.append([message]);
+    // TODO(?): move this to Session.compact() <- doesn't care will just run context
+    //   then here is if (input > input limits) { then compact }
     await this.#compactSession(session, thread);
 
     const history = await session.messages();
