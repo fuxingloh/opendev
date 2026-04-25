@@ -27,11 +27,24 @@ export class TursoStateAdapter implements StateAdapter {
   private readonly logger: Logger;
   private connected = false;
   private connectPromise: Promise<void> | null = null;
+  // Per-instance promise mutex around `client.transaction()`. Turso's session
+  // is single-threaded — concurrent calls collide with "cannot start a
+  // transaction within a transaction". Fluid Compute warm-instance reuse
+  // means two webhooks can hit this adapter at the same time. Transactions
+  // here are sub-millisecond; agent turns happen outside, so this only
+  // serializes the cheap part.
+  private txQueue: Promise<unknown> = Promise.resolve();
 
   constructor(options: TursoStateAdapterOptions) {
     this.client = options.client;
     this.keyPrefix = options.keyPrefix || DEFAULT_KEY_PREFIX;
     this.logger = options.logger ?? new ConsoleLogger("info").child("turso");
+  }
+
+  private serialize<T>(fn: () => Promise<T>): Promise<T> {
+    const next = this.txQueue.then(fn, fn);
+    this.txQueue = next.catch(() => undefined);
+    return next;
   }
 
   async connect(): Promise<void> {
@@ -100,10 +113,12 @@ export class TursoStateAdapter implements StateAdapter {
        RETURNING thread_id, token, expires_at`,
     );
 
-    const row = await this.client.transaction(async () => {
-      await delExpired.run([this.keyPrefix, threadId, now]);
-      return await insert.get([this.keyPrefix, threadId, token, expiresAt, now]);
-    })();
+    const row = await this.serialize(() =>
+      this.client.transaction(async () => {
+        await delExpired.run([this.keyPrefix, threadId, now]);
+        return await insert.get([this.keyPrefix, threadId, token, expiresAt, now]);
+      })(),
+    );
 
     if (!row) return null;
     return {
@@ -196,10 +211,12 @@ export class TursoStateAdapter implements StateAdapter {
        RETURNING cache_key`,
     );
 
-    const row = await this.client.transaction(async () => {
-      await delExpired.run([this.keyPrefix, key, now]);
-      return await insert.get([this.keyPrefix, key, serialized, expiresAt, now]);
-    })();
+    const row = await this.serialize(() =>
+      this.client.transaction(async () => {
+        await delExpired.run([this.keyPrefix, key, now]);
+        return await insert.get([this.keyPrefix, key, serialized, expiresAt, now]);
+      })(),
+    );
 
     return row !== undefined && row !== null;
   }
@@ -232,13 +249,15 @@ export class TursoStateAdapter implements StateAdapter {
        )`,
     );
 
-    await this.client.transaction(async () => {
-      await insert.run([this.keyPrefix, key, serialized, expiresAt]);
-      if (expiresAt !== null) await refreshTtl.run([expiresAt, this.keyPrefix, key]);
-      if (options?.maxLength && options.maxLength > 0) {
-        await trim.run([this.keyPrefix, key, this.keyPrefix, key, options.maxLength]);
-      }
-    })();
+    await this.serialize(() =>
+      this.client.transaction(async () => {
+        await insert.run([this.keyPrefix, key, serialized, expiresAt]);
+        if (expiresAt !== null) await refreshTtl.run([expiresAt, this.keyPrefix, key]);
+        if (options?.maxLength && options.maxLength > 0) {
+          await trim.run([this.keyPrefix, key, this.keyPrefix, key, options.maxLength]);
+        }
+      })(),
+    );
   }
 
   async getList<T = unknown>(key: string): Promise<T[]> {
@@ -285,15 +304,17 @@ export class TursoStateAdapter implements StateAdapter {
        WHERE key_prefix = ? AND thread_id = ? AND expires_at > ?`,
     );
 
-    return await this.client.transaction(async () => {
-      await purge.run([this.keyPrefix, threadId, now]);
-      await insert.run([this.keyPrefix, threadId, serialized, entry.expiresAt]);
-      if (maxSize > 0) {
-        await trim.run([this.keyPrefix, threadId, this.keyPrefix, threadId, maxSize]);
-      }
-      const row = await countStmt.get([this.keyPrefix, threadId, now]);
-      return toNumber(row?.depth);
-    })();
+    return await this.serialize(() =>
+      this.client.transaction(async () => {
+        await purge.run([this.keyPrefix, threadId, now]);
+        await insert.run([this.keyPrefix, threadId, serialized, entry.expiresAt]);
+        if (maxSize > 0) {
+          await trim.run([this.keyPrefix, threadId, this.keyPrefix, threadId, maxSize]);
+        }
+        const row = await countStmt.get([this.keyPrefix, threadId, now]);
+        return toNumber(row?.depth);
+      })(),
+    );
   }
 
   async dequeue(threadId: string): Promise<QueueEntry | null> {
@@ -310,13 +331,15 @@ export class TursoStateAdapter implements StateAdapter {
     );
     const del = await this.client.prepare("DELETE FROM chat_state_queues WHERE seq = ?");
 
-    const value = await this.client.transaction(async () => {
-      await purge.run([this.keyPrefix, threadId, now]);
-      const row = await pick.get([this.keyPrefix, threadId, now]);
-      if (!row) return null;
-      await del.run([row.seq]);
-      return row.value as string;
-    })();
+    const value = await this.serialize(() =>
+      this.client.transaction(async () => {
+        await purge.run([this.keyPrefix, threadId, now]);
+        const row = await pick.get([this.keyPrefix, threadId, now]);
+        if (!row) return null;
+        await del.run([row.seq]);
+        return row.value as string;
+      })(),
+    );
 
     if (value === null) return null;
     return JSON.parse(value) as QueueEntry;
