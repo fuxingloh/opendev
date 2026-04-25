@@ -157,23 +157,29 @@ export class OpenXyz {
     // tiebreaks 1s `dateSent` ties on the monotonic per-chat message_id),
     // so let it sort.
     const incoming = channel.sortMessages([...(context?.skipped ?? []), message]);
-
     const actions = await Promise.all(
-      incoming.map(async (m) => ({ message: m, reply: await channel.reply(thread, m) })),
+      incoming.map(async (message) => {
+        const action = await channel.reply(thread, message);
+        return {
+          message: message,
+          reply: action.reply,
+          reaction: action.reaction,
+        };
+      }),
     );
 
     // Reactions fire per-message regardless of `reply` — a template can
     // ack with `{ reply: false, reaction: "👀" }` to say "I see you, not
     // engaging." Fire-and-forget; a single failed reaction can't block
     // the turn.
-    for (const { message: m, reply } of actions) {
-      if (!reply.reaction) continue;
+    for (const { message: m, reaction } of actions) {
+      if (!reaction) continue;
       thread.adapter
-        .addReaction(thread.id, m.id, reply.reaction)
+        .addReaction(thread.id, m.id, reaction)
         .catch((err) => console.warn("[openxyz] addReaction failed", err));
     }
 
-    const routed = actions.filter((a) => a.reply.reply).map((a) => a.message);
+    const routed = actions.filter((a) => a.reply).map((a) => a.message);
     if (routed.length === 0) return;
 
     // Typing indicator fires once now that we know an agent will run.

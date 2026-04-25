@@ -50,16 +50,16 @@ export class TelegramChannel extends Channel<TelegramRaw> {
     return new Session(thread, this.#threaded ? "thread" : "channel");
   }
 
-  async toModelMessage(thread: Thread, message: Message<TelegramRaw>): Promise<ModelMessage> {
+  async toModelMessages(thread: Thread, messages: Message<TelegramRaw>[]): Promise<ModelMessage[]> {
     // History is owned by the session now (mnemonic/081). Per-message mapping
     // preserves Telegram's reply/forward XML annotation so the agent sees
     // conversation structure, not just flat text.
     const botUserId = (this.adapter as { botUserId?: string }).botUserId;
-    const [result] = await toAiMessages([message], {
+    const result = await toAiMessages(messages, {
       includeNames: !thread.isDM,
       transformMessage: (aiMsg, src) => annotate(aiMsg, src, botUserId),
     });
-    return result as ModelMessage;
+    return result as ModelMessage[];
   }
 
   async getSystemMessage(thread: Thread): Promise<SystemModelMessage> {
