@@ -88,6 +88,7 @@ export class OpenXyz {
       concurrency: { strategy: "queue-debounce", debounceMs: 500 },
       userName: "openxyz",
       logger: "info",
+      fallbackStreamingPlaceholderText: "…",
     });
 
     // chat-sdk dispatch is tiered with early returns (mnemonic/059). Fan
