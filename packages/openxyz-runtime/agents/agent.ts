@@ -10,6 +10,7 @@ import { estimateTokens, type Channel, type Message, type Session, type Thread }
 import type { Model } from "../model";
 import type { SkillDef } from "../tools/skill";
 import type { AgentDef, AgentFactory } from "./factory";
+import { splitOnFinishStep } from "./split-stream";
 
 // ─────────────────────────────────────────────────────────────────────────
 // Token-budget constants. Reserve-based (mnemonic/099 — opencode pattern,
@@ -333,7 +334,13 @@ export class Agent {
       // ordering is load-bearing. One append per turn; crash mid-stream loses
       // the turn's work, but the state round-trips collapse from N (one per
       // step) down to one.
-      await thread.post(result.fullStream);
+      //
+      // Split on `finish-step` so each LLM step renders as its own chat
+      // bubble (mnemonic/104) — the natural rhythm of "ack → tool → result"
+      // becomes visible burst-text instead of one growing message.
+      for await (const subStream of splitOnFinishStep(result.fullStream)) {
+        await thread.post(subStream);
+      }
       const response = await result.response;
       await session.append(response.messages as ModelMessage[]);
     } catch (err) {
