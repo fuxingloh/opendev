@@ -232,6 +232,50 @@ describe("TursoStateAdapter", () => {
         expect(extended).toBe(false);
       });
 
+      it("leaves an active lock untouched on a failed acquire", async () => {
+        // Load-bearing invariant for the upsert rewrite: the DO UPDATE WHERE
+        // clause must veto the write when the existing lock is active. If a
+        // future SQL tweak ever lets the update fire, the original holder's
+        // token/expires_at would silently rotate while the second caller
+        // still sees null — two holders, no warning. Pin it explicitly.
+        const first = await adapter.acquireLock("t1", 5000);
+        expect(first).not.toBeNull();
+        if (!first) return;
+        const second = await adapter.acquireLock("t1", 5000);
+        expect(second).toBeNull();
+        // First token still authorizes extend → row was not rewritten.
+        expect(await adapter.extendLock(first, 10_000)).toBe(true);
+      });
+
+      it("serializes concurrent acquires — exactly one winner", async () => {
+        const results = await Promise.all([
+          adapter.acquireLock("t1", 5000),
+          adapter.acquireLock("t1", 5000),
+          adapter.acquireLock("t1", 5000),
+        ]);
+        const winners = results.filter((r) => r !== null);
+        expect(winners.length).toBe(1);
+        const losers = results.filter((r) => r === null);
+        expect(losers.length).toBe(2);
+      });
+
+      it("rotates the token on expired-lock takeover", async () => {
+        // Pins the upsert semantics: when the existing lock is expired, the
+        // new caller must receive a fresh token, not the stale one. Caller's
+        // token uniquely authorizes release/extend, so a stale return here
+        // would silently let two holders coexist.
+        const first = await adapter.acquireLock("t1", 1);
+        expect(first).not.toBeNull();
+        await new Promise((r) => setTimeout(r, 10));
+        const second = await adapter.acquireLock("t1", 5000);
+        expect(second).not.toBeNull();
+        expect(second?.token).not.toBe(first?.token);
+        expect(second?.expiresAt).toBeGreaterThan(first?.expiresAt ?? 0);
+        // The first token must no longer extend the lock.
+        if (first) expect(await adapter.extendLock(first, 5000)).toBe(false);
+        if (second) expect(await adapter.extendLock(second, 5000)).toBe(true);
+      });
+
       it("force-releases a lock without checking token", async () => {
         const lock = await adapter.acquireLock("t1", 5000);
         expect(lock).not.toBeNull();

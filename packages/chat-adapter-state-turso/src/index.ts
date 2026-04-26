@@ -119,24 +119,21 @@ export class TursoStateAdapter implements StateAdapter {
     const now = Date.now();
     const expiresAt = now + ttlMs;
 
-    const delExpired = await this.prepare(
-      `DELETE FROM chat_state_locks
-       WHERE key_prefix = ? AND thread_id = ? AND expires_at <= ?`,
-    );
-    const insert = await this.prepare(
+    // Single-statement upsert: insert if absent, take over if expired, no-op if
+    // active. SQLite excludes a DO UPDATE row from RETURNING when its WHERE is
+    // false, so the active-lock case yields no row → null. Atomic per statement,
+    // so no transaction or serialize() needed.
+    const stmt = await this.prepare(
       `INSERT INTO chat_state_locks (key_prefix, thread_id, token, expires_at, updated_at)
        VALUES (?, ?, ?, ?, ?)
-       ON CONFLICT (key_prefix, thread_id) DO NOTHING
+       ON CONFLICT (key_prefix, thread_id) DO UPDATE
+         SET token = excluded.token,
+             expires_at = excluded.expires_at,
+             updated_at = excluded.updated_at
+         WHERE chat_state_locks.expires_at <= excluded.updated_at
        RETURNING thread_id, token, expires_at`,
     );
-
-    const row = await this.serialize(() =>
-      this.client.transaction(async () => {
-        await delExpired.run([this.keyPrefix, threadId, now]);
-        return await insert.get([this.keyPrefix, threadId, token, expiresAt, now]);
-      })(),
-    );
-
+    const row = await stmt.get([this.keyPrefix, threadId, token, expiresAt, now]);
     if (!row) return null;
     return {
       threadId: row.thread_id as string,
