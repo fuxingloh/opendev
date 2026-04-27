@@ -1,3 +1,4 @@
+import { readFile } from "node:fs/promises";
 import { Resvg } from "@resvg/resvg-js";
 import { getNodeChildren, getNodeValue } from "chat";
 import type { MdastTable, TableRow } from "chat";
@@ -7,24 +8,28 @@ import type { MdastTable, TableRow } from "chat";
 // deprecated alias.
 type AnyMdastNode = Parameters<typeof getNodeChildren>[0];
 
-// Vendored fonts (Roboto Regular + Bold, Apache 2.0). Vercel's Bun serverless
-// image ships no system fonts, so resvg's `loadSystemFonts: true` returns an
-// empty fontdb — text elements rasterize as blank. `with { type: "file" }`
-// imports tell Bun's bundler to copy the asset to the build output (with
-// a hashed filename) and rewrite the import to a relative path. Works in
-// dev (Bun direct-run resolves the absolute source path) and prod
-// (`Bun.build` copies the TTFs alongside `server.js` in `funcDir/`).
-// `Bun.file(path).bytes()` reads from either location identically. Decode
-// happens once per worker, cached in `fontBuffersPromise`.
+// Vendored fonts (Roboto Regular + Bold, Apache 2.0). Vercel's Node 22
+// serverless image ships no system fonts, so resvg's `loadSystemFonts: true`
+// returns an empty fontdb — text elements rasterize as blank. `with { type:
+// "file" }` imports tell Bun's bundler to copy the asset to the build
+// output with a hashed filename, rewriting the import to a relative path
+// string. We read the file via Node's `fs/promises` (Vercel runs the
+// bundle under Node 22, not Bun — `Bun.file` is undefined at runtime even
+// though `Bun.build` produced the bundle). `new URL(path, import.meta.url)`
+// resolves the relative path against the script's location, so it works
+// in dev (absolute source path) and prod (relative-to-server.js) without
+// caring about cwd. Decode happens once per worker, cached in
+// `fontBuffersPromise`.
 import RobotoRegularPath from "./fonts/Roboto-Regular.ttf" with { type: "file" };
 import RobotoBoldPath from "./fonts/Roboto-Bold.ttf" with { type: "file" };
 
 let fontBuffersPromise: Promise<Buffer[]> | null = null;
 function loadFonts(): Promise<Buffer[]> {
   if (!fontBuffersPromise) {
-    fontBuffersPromise = Promise.all([Bun.file(RobotoRegularPath).bytes(), Bun.file(RobotoBoldPath).bytes()]).then(
-      (arrs) => arrs.map((a) => Buffer.from(a)),
-    );
+    fontBuffersPromise = Promise.all([
+      readFile(new URL(RobotoRegularPath, import.meta.url)),
+      readFile(new URL(RobotoBoldPath, import.meta.url)),
+    ]);
   }
   return fontBuffersPromise;
 }
