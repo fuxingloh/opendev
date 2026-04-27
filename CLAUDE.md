@@ -14,17 +14,7 @@ Mnemonic notes live in a **separate sibling repo** at `../../@openxyz-app/mnemon
 
 You MUST ALWAYS look at `../../@openxyz-app/mnemonic/*` when writing a new feature or bugfix.
 
-> **Reference convention:** **always** write mnemonic note references in the `mnemonic/NNN` form — never bare `NNN` or `note 64`. The `mnemonic/` prefix makes the reference unambiguously a mnemonic note. `mnemonic/NNN` is the stable identifier; it maps to `../../@openxyz-app/mnemonic/NNN-*.md` (or `/mnt/mnemonic/NNN-*.md` when accessed via a janitor-style mount).
-
-**Whenever you create or edit a mnemonic note, commit and push it before moving on:**
-
-```
-git -C ../../@openxyz-app/mnemonic add -A && \
-  git -C ../../@openxyz-app/mnemonic commit -m "<short msg>" && \
-  git -C ../../@openxyz-app/mnemonic push
-```
-
-The mnemonic repo is its own git repo — changes do **not** propagate through the openxyz repo's commit flow.
+Reference convention, sync workflow (`./sync.sh`), and editing rules all live in `../../@openxyz-app/mnemonic/000-AGENTS.md` — read that whenever creating or editing a note.
 
 ## External references
 
