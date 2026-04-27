@@ -2,15 +2,27 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-> Internal scratchpad, open work, design history, and mnemonic cross-references live in `mnemonic/000-help.md`. Read that first if you want the full context behind decisions; this file is the public-facing project guide.
+> Internal scratchpad, open work, design history, and mnemonic cross-references live in `../../@openxyz-app/mnemonic/000-AGENTS.md` (a sibling repo). Read that first if you want the full context behind decisions; this file is the public-facing project guide.
 
 ## Mnemonic cross-references
 
 > "Mind-Palace"
 
-@mnemonic/000-help.md
+Mnemonic notes live in a **separate sibling repo** at `../../@openxyz-app/mnemonic/` (github.com:openxyz-app/mnemonic.git). Read, edit, and reference them via that relative path.
 
-You MUST ALWAYS look at mnemonic/\* when writing a new feature or bugfix.
+@../../@openxyz-app/mnemonic/000-AGENTS.md
+
+You MUST ALWAYS look at `../../@openxyz-app/mnemonic/*` when writing a new feature or bugfix.
+
+**Whenever you create or edit a mnemonic note, commit and push it before moving on:**
+
+```
+git -C ../../@openxyz-app/mnemonic add -A && \
+  git -C ../../@openxyz-app/mnemonic commit -m "<short msg>" && \
+  git -C ../../@openxyz-app/mnemonic push
+```
+
+The mnemonic repo is its own git repo — changes do **not** propagate through the openxyz repo's commit flow.
 
 ## External references
 
@@ -28,7 +40,7 @@ The reference template is `templates/openxyz-janitor` — the team's own chief-o
 
 - `../ai` — the `ai` SDK monorepo we depend on. Source for `ToolLoopAgent`, `wrapLanguageModel`, `convertToLanguageModelPrompt`, `streamText`, middleware spec, per-provider packages (`../ai/packages/{ai,anthropic,amazon-bedrock,openai,openai-compatible,gateway,...}`). Go here when you need exact types, marker shapes, or call semantics.
 - `../chat` — the chat-sdk monorepo. Source for `Chat`, `Thread`, `Adapter`, `toAiMessages`, `@chat-adapter/*`. Go here for dispatch tiering, thread lifecycle, webhook decoding, state adapter contracts.
-- Full reference checkouts table lives in `mnemonic/000-help.md`.
+- Full reference checkouts table lives in `../../@openxyz-app/mnemonic/000-AGENTS.md`.
 
 ## Tech direction
 
