@@ -174,6 +174,16 @@ const MID_TURN_PRESERVE_TAIL = 20;
  */
 const MAX_STEPS = 100;
 
+function sessionBytes(messages: ModelMessage[]): number {
+  return Buffer.byteLength(JSON.stringify(messages), "utf8");
+}
+
+function formatBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes}B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)}KB`;
+  return `${(bytes / 1024 / 1024).toFixed(1)}MB`;
+}
+
 /**
  * Runtime agent — wraps an `ai` SDK `ToolLoopAgent` with:
  *  - between-turn session compaction (keeps next-turn prompt cheap)
@@ -459,11 +469,14 @@ export class Agent {
     const toSummarize = messages.slice(0, preserveFromIdx);
     const toPreserve = messages.slice(preserveFromIdx);
 
+    const beforeBytes = sessionBytes(messages);
+
     const placeholder = await thread.post({ markdown: "Compacting session…" }).catch((err) => {
       console.warn("[openxyz] compaction placeholder post failed", err);
       return undefined;
     });
 
+    let succeeded = false;
     try {
       const compact = await this.#factory.create("compact", { delegate: false });
       let input = toSummarize;
@@ -485,16 +498,24 @@ export class Agent {
       };
       await session.replace([summary, ...toPreserve]);
 
-      const nextTokens = estimateTokens(await session.messages());
+      const nextMessages = await session.messages();
+      const nextTokens = estimateTokens(nextMessages);
       if (nextTokens * SAFETY_MARGIN >= this.#compactThreshold) {
         console.error(
           `[openxyz] session compaction left ${nextTokens} tokens (×${SAFETY_MARGIN} margin, threshold ${this.#compactThreshold}) — proceeding with oversized prompt`,
         );
       }
+      succeeded = true;
+      const afterBytes = sessionBytes(nextMessages);
+      if (placeholder) {
+        await placeholder
+          .edit({ markdown: `Compacted session: ${formatBytes(beforeBytes)} → ${formatBytes(afterBytes)}` })
+          .catch((err) => console.warn("[openxyz] compaction placeholder edit failed", err));
+      }
     } catch (err) {
       console.warn("[openxyz] session compaction failed, continuing with oversized session", err);
     } finally {
-      if (placeholder) {
+      if (placeholder && !succeeded) {
         await placeholder.delete().catch((err) => console.warn("[openxyz] compaction placeholder delete failed", err));
       }
     }
