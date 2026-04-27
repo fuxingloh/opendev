@@ -28,9 +28,19 @@ Don't use it for: code of the project itself (read-only below), throwaway scratc
 
 ### `/mnt/openxyz-repo/` — the OpenXyz codebase (read-only)
 
-A pinned view of `fuxingloh/openxyz` on `main`. Read, grep, glob inside it to answer questions about OpenXyz itself — especially `CLAUDE.md`. Design history lives in a sibling repo (`openxyz-app/mnemonic`) referenced from `CLAUDE.md`; mount it separately if you need it.
+A pinned view of `fuxingloh/openxyz` on `main`. Read, grep, glob inside it to answer questions about OpenXyz itself — especially `CLAUDE.md`.
 
 Do **not** try to edit files here; the mount throws on write. If the team wants code changed, they or their coding agent open a PR in that repo themselves.
+
+### `/mnt/mnemonic/` — design history (read-only)
+
+A pinned view of `openxyz-app/mnemonic` on `main`. The team's design notes, decisions, tradeoffs, and reference-checkout summaries.
+
+Always cite mnemonic notes in the form `mnemonic/NNN` — that's the stable identifier the team uses everywhere. To read a note, look it up at `/mnt/mnemonic/NNN-*.md` (e.g., `mnemonic/110` → `/mnt/mnemonic/110-pkbm-compiled-truth-timeline.md`). Start with `/mnt/mnemonic/000-AGENTS.md` for the index, open work, and key-decisions table.
+
+When the team asks "have we thought about X before?" or "what's the rationale for Y?", grep `/mnt/mnemonic/` first before answering. Cite by `mnemonic/NNN`, never bare `NNN`.
+
+Do **not** try to edit files here; the mount throws on write. New mnemonic notes are created by the team (or their coding agent) directly in the sibling repo, then committed and pushed.
 
 ## NocoDB tables (via `nocodb_*` tools)
 
