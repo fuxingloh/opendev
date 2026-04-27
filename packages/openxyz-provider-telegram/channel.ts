@@ -40,10 +40,12 @@ export type TelegramConfig = TelegramAdapterConfig & {
 export class TelegramChannel extends Channel<TelegramRaw> {
   readonly adapter: ChatSdkAdapter;
   readonly #threaded: boolean;
+  readonly #botToken: string;
 
   constructor(opts: TelegramConfig) {
     super();
     this.#threaded = opts.threaded ?? false;
+    this.#botToken = opts.botToken;
     // On Vercel, the function is serverless — polling would block forever
     // and bleed connections. Require webhook mode; the user runs Telegram's
     // `setWebhook` once, pointing at `https://<deploy>/webhooks/telegram`.
@@ -136,14 +138,12 @@ export class TelegramChannel extends Channel<TelegramRaw> {
           }
           try {
             const png = await renderTablePng(seg.node);
-            await thread.post({
-              markdown: "",
-              files: [{ filename: "table.png", data: png, mimeType: "image/png" }],
-            });
+            await this.#sendPhoto(thread.id, png);
           } catch (err) {
-            // Resvg load / native binding failure → fall through to mdast
-            // post so the table at least renders via chat-sdk's ASCII
-            // fallback. Logging only — never break a turn over the stop-gap.
+            // Resvg load / native binding failure or sendPhoto rejection →
+            // fall through to mdast post so the table at least renders via
+            // chat-sdk's ASCII fallback. Logging only — never break a turn
+            // over the stop-gap.
             console.warn("[openxyz/telegram] table PNG render failed, falling back to ASCII", err);
             await thread.post({ ast: { type: "root", children: [seg.node] } as Root });
           }
@@ -151,6 +151,43 @@ export class TelegramChannel extends Channel<TelegramRaw> {
       }
 
       await thread.startTyping().catch(() => {});
+    }
+  }
+
+  /**
+   * Direct Bot API `sendPhoto` call. Bypasses chat-sdk because the adapter
+   * routes every `FileUpload` through `sendDocument` (`../chat/packages/
+   * adapter-telegram/src/index.ts:683`), which renders as a tap-to-download
+   * attachment with no inline preview — the opposite of what we want for a
+   * table image. `sendPhoto` shows a real chat bubble image. Bypass loses
+   * chat-sdk's lock extension + `messageCache` insertion for this one
+   * outbound message; acceptable since the text bubbles either side still
+   * go through `thread.post`. Decode `thread.id` (`telegram:<chatId>` or
+   * `telegram:<chatId>:<threadId>`) directly — `decodeThreadId` is public
+   * on the adapter but typing it across the chat-sdk boundary is more
+   * surface area than the split. Stop-gap (mnemonic/115) — proper fix is
+   * an upstream patch routing image MIME types in chat-sdk's adapter.
+   */
+  async #sendPhoto(threadId: string, png: Buffer): Promise<void> {
+    const parts = threadId.split(":");
+    if (parts[0] !== "telegram" || parts.length < 2) {
+      throw new Error(`unexpected telegram threadId shape: ${threadId}`);
+    }
+    const chatId = parts[1]!;
+    const messageThreadId = parts.length === 3 ? parts[2] : undefined;
+
+    const form = new FormData();
+    form.append("chat_id", chatId);
+    if (messageThreadId) form.append("message_thread_id", messageThreadId);
+    form.append("photo", new Blob([new Uint8Array(png)], { type: "image/png" }), "table.png");
+
+    const res = await fetch(`https://api.telegram.org/bot${this.#botToken}/sendPhoto`, {
+      method: "POST",
+      body: form,
+    });
+    if (!res.ok) {
+      const body = await res.text().catch(() => "<unreadable>");
+      throw new Error(`telegram sendPhoto failed: ${res.status} ${body}`);
     }
   }
 
