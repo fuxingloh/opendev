@@ -7,6 +7,29 @@ import type { MdastTable, TableRow } from "chat";
 // deprecated alias.
 type AnyMdastNode = Parameters<typeof getNodeChildren>[0];
 
+// Vendored fonts (Roboto Regular + Bold, Apache 2.0). Vercel's Bun serverless
+// image ships no system fonts, so resvg's `loadSystemFonts: true` returns an
+// empty fontdb — text elements rasterize as blank. Disk-relative `Bun.file`
+// loads also fail post-bundle (Bun.build emits a single `server.js`, no
+// adjacent asset copy). Embedding via base64 text imports inlines the bytes
+// straight into the JS bundle — works in dev (Bun direct-run reads the
+// `.b64` file) and prod (Bun.build inlines the string literal). ~810KB
+// added to bundle. Decode happens once per worker, cached in
+// `fontBuffersPromise`.
+import RobotoRegularBase64 from "./fonts/Roboto-Regular.ttf.b64" with { type: "text" };
+import RobotoBoldBase64 from "./fonts/Roboto-Bold.ttf.b64" with { type: "text" };
+
+let fontBuffersPromise: Promise<Buffer[]> | null = null;
+function loadFonts(): Promise<Buffer[]> {
+  if (!fontBuffersPromise) {
+    fontBuffersPromise = Promise.resolve([
+      Buffer.from(RobotoRegularBase64, "base64"),
+      Buffer.from(RobotoBoldBase64, "base64"),
+    ]);
+  }
+  return fontBuffersPromise;
+}
+
 const FONT_SIZE = 14;
 const LINE_HEIGHT = FONT_SIZE * 1.4;
 const CELL_PADDING_X = 12;
@@ -77,9 +100,18 @@ export async function renderTablePng(node: MdastTable): Promise<Buffer> {
       ? { mode: "height", value: MAX_RENDER_HEIGHT }
       : { mode: "width", value: renderWidth };
 
+  const fontBuffers = await loadFonts();
   const resvg = new Resvg(svg, {
     background: "white",
-    font: { loadSystemFonts: true, defaultFontFamily: "sans-serif" },
+    font: {
+      // `loadSystemFonts: false` — Vercel Bun's image has no fonts to find,
+      // and ignoring system fonts on macOS keeps render identical across
+      // environments. `fontBuffers` registers Roboto Regular + Bold;
+      // `defaultFontFamily` matches the `font-family` in `buildSvg`.
+      loadSystemFonts: false,
+      fontBuffers,
+      defaultFontFamily: "Roboto",
+    },
     fitTo,
   });
   return resvg.render().asPng();
@@ -174,7 +206,7 @@ function buildSvg(rows: Row[], colWidths: number[], rowHeights: number[], W: num
       lines.forEach((line, lineIdx) => {
         const ty = y + CELL_PADDING_Y + (lineIdx + 1) * LINE_HEIGHT - 4;
         parts.push(
-          `<text x="${x + CELL_PADDING_X}" y="${ty}" font-family="sans-serif" font-size="${FONT_SIZE}" font-weight="${weight}" fill="${color}">${escapeXml(line)}</text>`,
+          `<text x="${x + CELL_PADDING_X}" y="${ty}" font-family="Roboto, sans-serif" font-size="${FONT_SIZE}" font-weight="${weight}" fill="${color}">${escapeXml(line)}</text>`,
         );
       });
       x += cw;
