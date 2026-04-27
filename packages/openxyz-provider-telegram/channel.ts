@@ -1,9 +1,20 @@
 import { createTelegramAdapter, type TelegramAdapterConfig, type TelegramRawMessage } from "@chat-adapter/telegram";
-import { type AiMessage, type AiMessagePart, type Message, toAiMessages } from "chat";
+import {
+  type AiMessage,
+  type AiMessagePart,
+  isTableNode,
+  type Message,
+  parseMarkdown,
+  stringifyMarkdown,
+  toAiMessages,
+} from "chat";
+import type { MdastTable, Root } from "chat";
 import type { Adapter as ChatSdkAdapter } from "chat";
 import type { ModelMessage, SystemModelMessage } from "ai";
 import { Channel, Session, type ReplyAction, type Thread } from "@openxyz/runtime/channels";
 import { backend } from "@openxyz/runtime/backend";
+import { renderTablePng } from "./render-table";
+import { splitOnFinishStep } from "./split-stream";
 
 export type { Thread, Message, ReplyAction } from "@openxyz/runtime/channels";
 export { Channel } from "@openxyz/runtime/channels";
@@ -83,6 +94,64 @@ export class TelegramChannel extends Channel<TelegramRaw> {
       if (t !== 0) return t;
       return idTail(a.id) - idTail(b.id);
     });
+  }
+
+  /**
+   * Telegram-specific stream rendering. Three things stacked, all
+   * Telegram-shaped, none belonging in runtime:
+   *
+   * 1. **Bubble split (mnemonic/104).** Iterate `splitOnFinishStep` so each
+   *    LLM step posts as its own chat bubble — natural "ack → tool →
+   *    result" rhythm.
+   * 2. **Table → PNG (mnemonic/115).** Buffer each substream, walk mdast,
+   *    render `Table` nodes as inline images via `@resvg/resvg-js`. Replaces
+   *    the unreadable `tableToAscii` fallback in
+   *    `../chat/packages/adapter-telegram/src/markdown.ts`. The whole table
+   *    is captured before render — `collectTextDeltas` drains the
+   *    substream first, so we render once on the final mdast, never on a
+   *    partial.
+   * 3. **Typing heartbeat (mnemonic/100).** Re-fire `startTyping` between
+   *    bubbles so Telegram's 5s `sendChatAction` TTL doesn't lapse during
+   *    tool execution.
+   *
+   * Streaming trade-off: intra-bubble streaming is lost on Telegram. Edit-
+   * message UX was already weak (rate-limited, mobile flash) so the
+   * regression is invisible in practice.
+   */
+  override async postFullStream(thread: Thread, fullStream: AsyncIterable<unknown>): Promise<void> {
+    for await (const subStream of splitOnFinishStep(fullStream as AsyncIterable<{ type: string }>)) {
+      const text = await collectTextDeltas(subStream);
+      if (!text) continue;
+
+      const ast = safeParseMarkdown(text);
+      const segments = ast ? splitTablesFromAst(ast) : [{ kind: "md" as const, text }];
+
+      if (segments.length === 1 && segments[0]!.kind === "md") {
+        await thread.post({ markdown: segments[0]!.text });
+      } else {
+        for (const seg of segments) {
+          if (seg.kind === "md") {
+            if (seg.text) await thread.post({ markdown: seg.text });
+            continue;
+          }
+          try {
+            const png = await renderTablePng(seg.node);
+            await thread.post({
+              markdown: "",
+              files: [{ filename: "table.png", data: png, mimeType: "image/png" }],
+            });
+          } catch (err) {
+            // Resvg load / native binding failure → fall through to mdast
+            // post so the table at least renders via chat-sdk's ASCII
+            // fallback. Logging only — never break a turn over the stop-gap.
+            console.warn("[openxyz/telegram] table PNG render failed, falling back to ASCII", err);
+            await thread.post({ ast: { type: "root", children: [seg.node] } as Root });
+          }
+        }
+      }
+
+      await thread.startTyping().catch(() => {});
+    }
   }
 
   /**
@@ -255,4 +324,66 @@ function prependText(aiMsg: AiMessage, prefix: string): AiMessage {
   }
   // No text part (pure attachments) — inject one up front.
   return { role: "user", content: [{ type: "text", text: prefix.trimEnd() }, ...parts] };
+}
+
+/**
+ * Drain an AI SDK fullStream-shaped substream and concatenate every
+ * `text-delta` payload into a single string. Non-text events (`start-step`,
+ * `tool-input-start`, etc.) are ignored — chat-sdk's `fromFullStream`
+ * already drops them, so we mirror that behavior. Handles both AI SDK v5
+ * (`textDelta`) and v6 (`text`/`delta`) field shapes.
+ */
+async function collectTextDeltas(stream: AsyncIterable<unknown>): Promise<string> {
+  let out = "";
+  for await (const event of stream) {
+    if (typeof event === "string") {
+      out += event;
+      continue;
+    }
+    if (!event || typeof event !== "object") continue;
+    const e = event as { type?: string; text?: unknown; delta?: unknown; textDelta?: unknown };
+    if (e.type !== "text-delta") continue;
+    const value = e.text ?? e.delta ?? e.textDelta;
+    if (typeof value === "string") out += value;
+  }
+  return out;
+}
+
+type Segment = { kind: "md"; text: string } | { kind: "table"; node: MdastTable };
+
+/**
+ * Walk top-level mdast children, peeling `Table` nodes out into their own
+ * segments and stringifying everything else back into markdown chunks.
+ * Each `Table` becomes its own bubble (rendered as PNG); contiguous
+ * non-table content stays as one markdown bubble. Empty groups (consecutive
+ * tables with no prose between) are dropped.
+ */
+function splitTablesFromAst(root: Root): Segment[] {
+  const segments: Segment[] = [];
+  let buf: Root["children"] = [];
+  const flush = () => {
+    if (buf.length === 0) return;
+    const md = stringifyMarkdown({ type: "root", children: buf } as Root).trim();
+    if (md) segments.push({ kind: "md", text: md });
+    buf = [];
+  };
+  for (const child of root.children) {
+    if (isTableNode(child)) {
+      flush();
+      segments.push({ kind: "table", node: child });
+    } else {
+      buf.push(child);
+    }
+  }
+  flush();
+  return segments;
+}
+
+function safeParseMarkdown(text: string): Root | null {
+  try {
+    return parseMarkdown(text);
+  } catch (err) {
+    console.warn("[openxyz/telegram] markdown parse failed, posting raw", err);
+    return null;
+  }
 }

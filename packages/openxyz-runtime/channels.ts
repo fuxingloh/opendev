@@ -108,6 +108,27 @@ export abstract class Channel<Raw = unknown> {
   }
 
   /**
+   * Render the agent's `fullStream` for this channel. Default passes the
+   * whole stream straight to chat-sdk — `thread.post(fullStream)` extracts
+   * text-deltas with built-in throttling and emits one bubble per turn.
+   *
+   * Adapters override when the platform needs the stream pre-processed.
+   * Telegram (`@openxyz-provider/telegram`) splits on `finish-step` for
+   * one bubble per LLM step (mnemonic/104), buffers each substream,
+   * extracts mdast `Table` nodes and renders them as inline PNGs
+   * (mnemonic/115), and re-fires typing between bubbles (mnemonic/100).
+   * That all stays out of the runtime — bubble shape is an adapter
+   * concern, not a runtime one.
+   *
+   * `fullStream` is the AI SDK `streamText` event stream — `text-delta`,
+   * `tool-input-start`, `tool-call`, `tool-result`, `finish-step`,
+   * `finish`. Adapters consume what they need and ignore the rest.
+   */
+  async postFullStream(thread: Thread, fullStream: AsyncIterable<unknown>): Promise<void> {
+    await thread.post(fullStream as AsyncIterable<string>);
+  }
+
+  /**
    * Reorder a debounce-window burst into the user's send order. Webhook
    * arrival at the state-adapter `enqueue` reflects whichever request hit
    * the database first — a network race, not what the user typed when.

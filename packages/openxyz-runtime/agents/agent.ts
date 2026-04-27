@@ -10,7 +10,6 @@ import { estimateTokens, type Channel, type Message, type Session, type Thread }
 import type { Model } from "../model";
 import type { SkillDef } from "../tools/skill";
 import type { AgentDef, AgentFactory } from "./factory";
-import { splitOnFinishStep } from "./split-stream";
 
 // ─────────────────────────────────────────────────────────────────────────
 // Token-budget constants. Reserve-based (mnemonic/099 — opencode pattern,
@@ -335,17 +334,13 @@ export class Agent {
       // the turn's work, but the state round-trips collapse from N (one per
       // step) down to one.
       //
-      // Split on `finish-step` so each LLM step renders as its own chat
-      // bubble (mnemonic/104) — the natural rhythm of "ack → tool → result"
-      // becomes visible burst-text instead of one growing message. Re-fire
-      // the typing indicator after each bubble to cover the next step's
-      // tool-execution gap — Telegram's sendChatAction expires ~5s
-      // (mnemonic/100), and without a heartbeat the recipient sees nothing
-      // while tools run between text-emitting steps.
-      for await (const subStream of splitOnFinishStep(result.fullStream)) {
-        await thread.post(subStream);
-        await thread.startTyping().catch(() => {});
-      }
+      // How the stream renders is the channel's call (mnemonic/115). Default
+      // is a passthrough to chat-sdk's `thread.post(fullStream)` — text-deltas
+      // streamed live, one bubble per turn. Adapters that need different
+      // rendering (Telegram: split on `finish-step` per mnemonic/104, render
+      // mdast `Table` nodes as inline PNGs, re-fire typing per bubble per
+      // mnemonic/100) override `postFullStream`. Runtime stays adapter-agnostic.
+      await channel.postFullStream(thread, result.fullStream);
       const response = await result.response;
       await session.append(response.messages as ModelMessage[]);
     } catch (err) {

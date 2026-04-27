@@ -9,11 +9,13 @@
     "./channel": "./channel.ts"
   },
   "files": [
-    "channel.ts"
+    "channel.ts",
+    "render-table.ts"
   ],
   "dependencies": {
     "@chat-adapter/telegram": "catalog:",
     "@openxyz/runtime": "workspace:*",
+    "@resvg/resvg-js": "^2.6.2",
     "chat": "catalog:"
   },
   "devDependencies": {
