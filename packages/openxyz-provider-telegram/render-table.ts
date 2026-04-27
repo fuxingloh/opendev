@@ -68,9 +68,9 @@ const CHAR_PX = 7.5;
 
 /**
  * Render a markdown `Table` mdast node as a PNG buffer. Hand-rolled SVG layout
- * (no Satori) — tables are grids, no flex/wrap solver needed. Resvg picks up
- * system fonts (`loadSystemFonts: true`); on Vercel Bun's Linux image that's
- * Liberation Sans + DejaVu, which covers Latin + basic CJK. Sized to OG card
+ * (no Satori) — tables are grids, no flex/wrap solver needed. Fonts come from
+ * vendored Roboto Regular + Bold (see `loadFonts` for the why); Vercel Bun's
+ * serverless image has no system fonts to fall back to. Sized to OG card
  * conventions (1200px wide, 2× scale = 2400px PNG) so Telegram displays the
  * preview crisply on retina and tap-to-expand stays readable. Stop-gap
  * renderer for `mnemonic/115` — delete when chat-sdk ships a `tableRenderer`
