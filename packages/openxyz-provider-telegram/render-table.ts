@@ -1,5 +1,6 @@
-import { readFile } from "node:fs/promises";
-import { Resvg } from "@resvg/resvg-js";
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+import { initWasm, Resvg } from "@resvg/resvg-wasm";
 import { getNodeChildren, getNodeValue } from "chat";
 import type { MdastTable, TableRow } from "chat";
 
@@ -8,31 +9,37 @@ import type { MdastTable, TableRow } from "chat";
 // deprecated alias.
 type AnyMdastNode = Parameters<typeof getNodeChildren>[0];
 
-// Vendored fonts (Roboto Regular + Bold, Apache 2.0). Vercel's Node 22
-// serverless image ships no system fonts, so resvg's `loadSystemFonts: true`
-// returns an empty fontdb — text elements rasterize as blank. `with { type:
-// "file" }` imports tell Bun's bundler to copy the asset to the build
-// output with a hashed filename, rewriting the import to a relative path
-// string. We read the file via Node's `fs/promises` (Vercel runs the
-// bundle under Node 22, not Bun — `Bun.file` is undefined at runtime even
-// though `Bun.build` produced the bundle). `new URL(path, import.meta.url)`
-// resolves the relative path against the script's location, so it works
-// in dev (absolute source path) and prod (relative-to-server.js) without
-// caring about cwd. Decode happens once per worker, cached in
-// `fontBuffersPromise`.
+// Renderer stack: pure WASM. Mirrors `@vercel/og`'s Node-runtime pattern
+// (see `node_modules/@vercel/og/dist/index.node.js:21437-21452`) — the
+// only production-tested approach for image rendering on Vercel Node 22
+// functions.
+//
+// Why WASM over `@resvg/resvg-js` (napi): Bun.build on macOS resolves
+// `@resvg/resvg-js`'s platform-specific `.node` binary against the build
+// machine's arch. The bundled output ships `resvgjs.darwin-arm64.node`,
+// which does the wrong thing on Vercel's Linux x64 runtime — text
+// elements silently rasterize blank while shapes (rect/line) keep
+// rendering. WASM has no platform binary; one `.wasm` byte stream runs
+// identically on macOS dev and Vercel Linux prod.
+//
+// Asset loading: vendored Roboto Regular + Bold TTFs and the resvg WASM
+// are imported via Bun's `with { type: "file" }` attribute. Bun.build
+// copies each asset to the bundle output with a hashed filename and
+// rewrites the import to a relative path string. At runtime we resolve
+// the path against `import.meta.url` (script location, not cwd) and read
+// synchronously at module init via `fs.readFileSync` — same pattern
+// `@vercel/og` uses.
 import RobotoRegularPath from "./fonts/Roboto-Regular.ttf" with { type: "file" };
 import RobotoBoldPath from "./fonts/Roboto-Bold.ttf" with { type: "file" };
+// `@resvg/resvg-wasm/index_bg.wasm` is the WASM byte stream. Importing it
+// via the file loader bundles it alongside `server.js` and gives us a
+// path string we can `readFileSync` and pass to `initWasm`.
+import ResvgWasmPath from "@resvg/resvg-wasm/index_bg.wasm" with { type: "file" };
 
-let fontBuffersPromise: Promise<Buffer[]> | null = null;
-function loadFonts(): Promise<Buffer[]> {
-  if (!fontBuffersPromise) {
-    fontBuffersPromise = Promise.all([
-      readFile(new URL(RobotoRegularPath, import.meta.url)),
-      readFile(new URL(RobotoBoldPath, import.meta.url)),
-    ]);
-  }
-  return fontBuffersPromise;
-}
+const robotoRegular = readFileSync(fileURLToPath(new URL(RobotoRegularPath, import.meta.url)));
+const robotoBold = readFileSync(fileURLToPath(new URL(RobotoBoldPath, import.meta.url)));
+const resvgWasm = readFileSync(fileURLToPath(new URL(ResvgWasmPath, import.meta.url)));
+const initializedResvg = initWasm(resvgWasm);
 
 const FONT_SIZE = 14;
 const LINE_HEIGHT = FONT_SIZE * 1.4;
@@ -104,21 +111,27 @@ export async function renderTablePng(node: MdastTable): Promise<Buffer> {
       ? { mode: "height", value: MAX_RENDER_HEIGHT }
       : { mode: "width", value: renderWidth };
 
-  const fontBuffers = await loadFonts();
+  await initializedResvg;
   const resvg = new Resvg(svg, {
     background: "white",
     font: {
-      // `loadSystemFonts: false` — Vercel Bun's image has no fonts to find,
-      // and ignoring system fonts on macOS keeps render identical across
-      // environments. `fontBuffers` registers Roboto Regular + Bold;
-      // `defaultFontFamily` matches the `font-family` in `buildSvg`.
+      // `loadSystemFonts: false` — Vercel Linux serverless image has no
+      // fonts to find, and ignoring system fonts on macOS keeps render
+      // identical across environments. `fontBuffers` registers Roboto
+      // Regular + Bold; `defaultFontFamily` matches the `font-family`
+      // emitted by `buildSvg`. `new Uint8Array(buf)` strips the Buffer
+      // prototype — resvg-wasm's WASM boundary expects strict Uint8Array.
       loadSystemFonts: false,
-      fontBuffers,
+      fontBuffers: [new Uint8Array(robotoRegular), new Uint8Array(robotoBold)],
       defaultFontFamily: "Roboto",
     },
     fitTo,
   });
-  return resvg.render().asPng();
+  const rendered = resvg.render();
+  const png = rendered.asPng();
+  rendered.free();
+  resvg.free();
+  return Buffer.from(png);
 }
 
 type Row = string[];

@@ -14,6 +14,8 @@ Mnemonic notes live in a **separate sibling repo** at `../../@openxyz-app/mnemon
 
 You MUST ALWAYS look at `../../@openxyz-app/mnemonic/*` when writing a new feature or bugfix.
 
+> **Reference convention:** inline mentions of `mnemonic/NNN` (in source comments, docs, or other mnemonic notes) are stable note identifiers. They map to `../../@openxyz-app/mnemonic/NNN-*.md`. The bare `mnemonic/NNN` form is intentionally short — don't rewrite source comments to spell out the full path.
+
 **Whenever you create or edit a mnemonic note, commit and push it before moving on:**
 
 ```

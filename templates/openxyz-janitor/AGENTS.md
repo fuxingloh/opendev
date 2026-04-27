@@ -28,7 +28,7 @@ Don't use it for: code of the project itself (read-only below), throwaway scratc
 
 ### `/mnt/openxyz-repo/` — the OpenXyz codebase (read-only)
 
-A pinned view of `fuxingloh/openxyz` on `main`. Read, grep, glob inside it to answer questions about OpenXyz itself — especially `CLAUDE.md` and `mnemonic/000-help.md` for the index into design history.
+A pinned view of `fuxingloh/openxyz` on `main`. Read, grep, glob inside it to answer questions about OpenXyz itself — especially `CLAUDE.md`. Design history lives in a sibling repo (`openxyz-app/mnemonic`) referenced from `CLAUDE.md`; mount it separately if you need it.
 
 Do **not** try to edit files here; the mount throws on write. If the team wants code changed, they or their coding agent open a PR in that repo themselves.
 

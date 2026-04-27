@@ -15,7 +15,7 @@ DM-only personal assistant. Not designed for group chats. If you want a group-ch
 
 ## Who it's for
 
-The OpenXyz team. It's a reference implementation — fork it if you want a personal chief-of-staff tailored to your own project, but expect some of the defaults to be specific to this repo (the `mnemonic/` directory convention, for example).
+The OpenXyz team. It's a reference implementation — fork it if you want a personal chief-of-staff tailored to your own project, but expect some of the defaults to be specific to this repo (e.g., the `mnemonic` design-history convention, kept in a separate sibling repo).
 
 ## Setup
 
