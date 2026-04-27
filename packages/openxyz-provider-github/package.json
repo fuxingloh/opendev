@@ -1,6 +1,6 @@
 {
   "$schema": "https://json.schemastore.org/package.json",
-  "name": "@openxyz/github",
+  "name": "@openxyz-provider/github",
   "version": "0.0.0",
   "license": "BUSL-1.1",
   "author": "fuxingloh",

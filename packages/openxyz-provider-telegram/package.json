@@ -1,6 +1,6 @@
 {
   "$schema": "https://json.schemastore.org/package.json",
-  "name": "@openxyz/telegram",
+  "name": "@openxyz-provider/telegram",
   "version": "0.0.0",
   "license": "BUSL-1.1",
   "author": "fuxingloh",

@@ -1,4 +1,4 @@
-import { GitHubDrive } from "@openxyz/github/drive";
+import { GitHubDrive } from "@openxyz-provider/github/drive";
 import { readEnv } from "openxyz/env";
 
 export default new GitHubDrive({

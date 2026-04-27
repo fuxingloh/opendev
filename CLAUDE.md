@@ -52,7 +52,7 @@ Default to AI Gateway model strings (`provider/model`) over direct provider SDK 
 - **Root** (`package.json`): Bun workspaces (`packages/*`, `templates/*`) via the `workspaces` field, Turborepo, shared Prettier config (120-char width, `prettier-plugin-packagejson`). Package manager and runtime is **Bun** (not npm/pnpm/yarn). No `engines.node` pin.
 - **`packages/openxyz`**: the publishable **CLI + thin facade** that templates (downstream users) depend on. Owns the `openxyz` bin and the re-export surface (`openxyz/tools`, `openxyz/channels/*`, `openxyz/drives/*`, `openxyz/env`). ESM-only. **No build step** — Bun runs TypeScript natively. `bin.openxyz` in `package.json` points directly at `bin/bin.ts` (`#!/usr/bin/env bun`). Subpath exports point at source (`./channels/telegram.ts`) — consumers need Bun. Peer-deps `ai@^6` and `@ai-sdk/provider@^3`. Keep this package small — real work lives in `@openxyz/runtime` and the vendor packages.
 - **`packages/openxyz-runtime`** (`@openxyz/runtime`): the **engine**. Agent loop (`openxyz.ts`), tool registry/discovery, VFS (`just-bash` + `MountableFs`), `Drive` interface + `WorkspaceDrive`, reusable FS adapters (`fs/ignored.ts`, `fs/readonly.ts`), `Channel` abstract class, session store, streaming. Scoped package, internal to the openxyz family. Bare engine — ships no default agents, no default models, no default drives beyond `WorkspaceDrive`. Templates do **not** import from here directly — they import from `openxyz`, which re-exports whatever runtime surface the template needs.
-- **Vendor packages** (`@openxyz/<vendor>` ↔ `packages/openxyz-<vendor>/`): one package per external integration (Telegram, GitHub, Slack, Notion, ...). Subpath exports by kind: `@openxyz/telegram/channel`, `@openxyz/github/drive`, etc. A vendor can ship any mix of `/channel`, `/drive`, `/tools`, `/model` as its surface. Popular vendors (Telegram currently) get re-exported via `openxyz/channels/<vendor>` + `openxyz/drives/<vendor>` so templates don't need an extra install; less-popular ones users add explicitly. Naming convention and rationale in `mnemonic/075`.
+- **Vendor packages** (`@openxyz-provider/<vendor>` ↔ `packages/openxyz-provider-<vendor>/`): one package per external integration (Telegram, GitHub, Google, Notion, ...). Vendor integrations live under a separate `@openxyz-provider/*` npm scope; core packages (runtime, auth, facade) stay under `@openxyz/*`. Subpath exports by kind: `@openxyz-provider/telegram/channel`, `@openxyz-provider/github/drive`, etc. A vendor can ship any mix of `/channel`, `/drive`, `/tools`, `/model`, `/auth` as its surface. Popular vendors (Telegram currently) get re-exported via `openxyz/channels/<vendor>` + `openxyz/drives/<vendor>` so templates don't need an extra install; less-popular ones users add explicitly. Naming convention and rationale in `mnemonic/075`.
 - **Templates** (`templates/<name>/`): reference projects. `openxyz-janitor` is the dogfood chief-of-staff. `pkbm-agent` and `group-agent` exercise other shapes. Each template depends on `openxyz: workspace:*`.
 - **Turborepo** (`turbo.json`): `build`, `test`, `clean`, `dev` tasks. `packages/openxyz` has no build script (runs source). Templates use `build: openxyz build` which codegens a Vercel function bundle into `.vercel/output/`. Filter via `bun run build --filter='./templates/*'` or `--filter=<template-name>`.
 
@@ -79,7 +79,7 @@ A template is a project directory the user runs `openxyz start` from. Filename =
 
 ```
 my-template/
-├── package.json              # deps: openxyz + vendor packages (@openxyz/telegram, @openxyz/github, ...)
+├── package.json              # deps: openxyz + vendor packages (@openxyz-provider/telegram, @openxyz-provider/github, ...)
 ├── AGENTS.md                 # project-specific instructions for the AI
 ├── .env.local                # TELEGRAM_BOT_TOKEN, GITHUB_TOKEN, etc.
 ├── channels/                 # transport adapters (telegram, slack, ...) — mount sessions
@@ -106,7 +106,7 @@ Filename = identity:
 - **Template** = project directory with the conventions above
 - **Runtime** = `@openxyz/runtime` — the bare engine (agent loop, VFS, drive/channel interfaces, session store). Historical docs/mnemonic entries may call this "harness"; new work uses "runtime".
 - **Facade** = `openxyz` — the CLI (`openxyz build`/`openxyz start`) + re-export surface templates import from.
-- **Vendor package** = `@openxyz/<vendor>` — external integration (Telegram, GitHub, ...). Subpaths: `/channel`, `/drive`, `/tools`, `/model`.
+- **Vendor package** = `@openxyz-provider/<vendor>` — external integration (Telegram, GitHub, Google, ...). Subpaths: `/channel`, `/drive`, `/tools`, `/model`, `/auth`. Lives under a separate npm scope from core `@openxyz/*` packages.
 - **Channel** = transport type (telegram, slack, terminal) — lives in `channels/`. A channel is the parent container.
 - **Session** = one conversation context, child of a channel. One channel contains many sessions. Naming: `<channel>:<id>`, e.g. `telegram:7601560926`.
 - **Drive** = a mounted filesystem with optional `refresh()`/`commit()` lifecycle hooks. `WorkspaceDrive` at `/workspace` is always mounted; templates can add drives under `/mnt/<name>/` via `drives/<name>.ts`.

@@ -42,8 +42,8 @@
         "@ai-sdk/mcp": "^1.0.36",
         "@ai-sdk/openai-compatible": "2.0.41",
         "@chat-adapter/state-turso": "workspace:*",
+        "@openxyz-provider/telegram": "workspace:*",
         "@openxyz/runtime": "workspace:*",
-        "@openxyz/telegram": "workspace:*",
         "@vercel/functions": "^3",
         "chat": "catalog:",
         "commander": "^14.0.3",
@@ -58,8 +58,8 @@
         "ai": "catalog:",
       },
     },
-    "packages/openxyz-github": {
-      "name": "@openxyz/github",
+    "packages/openxyz-provider-github": {
+      "name": "@openxyz-provider/github",
       "version": "0.0.0",
       "dependencies": {
         "@openxyz/runtime": "workspace:*",
@@ -73,8 +73,8 @@
         "chat": "catalog:",
       },
     },
-    "packages/openxyz-google": {
-      "name": "@openxyz/google",
+    "packages/openxyz-provider-google": {
+      "name": "@openxyz-provider/google",
       "version": "0.0.0",
       "dependencies": {
         "@openxyz/runtime": "workspace:*",
@@ -83,6 +83,21 @@
       },
       "devDependencies": {
         "@types/bun": "latest",
+      },
+    },
+    "packages/openxyz-provider-telegram": {
+      "name": "@openxyz-provider/telegram",
+      "version": "0.0.0",
+      "dependencies": {
+        "@chat-adapter/telegram": "catalog:",
+        "@openxyz/runtime": "workspace:*",
+        "chat": "catalog:",
+      },
+      "devDependencies": {
+        "@types/bun": "latest",
+      },
+      "peerDependencies": {
+        "ai": "catalog:",
       },
     },
     "packages/openxyz-runtime": {
@@ -107,21 +122,6 @@
         "ai": "catalog:",
       },
     },
-    "packages/openxyz-telegram": {
-      "name": "@openxyz/telegram",
-      "version": "0.0.0",
-      "dependencies": {
-        "@chat-adapter/telegram": "catalog:",
-        "@openxyz/runtime": "workspace:*",
-        "chat": "catalog:",
-      },
-      "devDependencies": {
-        "@types/bun": "latest",
-      },
-      "peerDependencies": {
-        "ai": "catalog:",
-      },
-    },
     "templates/group-agent": {
       "name": "group-agent",
       "dependencies": {
@@ -136,7 +136,7 @@
       "dependencies": {
         "@ai-sdk/google": "3.0.64",
         "@ai-sdk/xai": "3.0.83",
-        "@openxyz/github": "workspace:*",
+        "@openxyz-provider/github": "workspace:*",
         "ai": "catalog:",
         "openxyz": "workspace:*",
       },
@@ -265,13 +265,13 @@
 
     "@opentelemetry/api": ["@opentelemetry/api@1.9.0", "", {}, "sha512-3giAOQvZiH5F9bMlMiv8+GSPMeqg0dbaeo58/0SlA9sxSqZhnUtxzX9/2FzyhS9sWQf5S0GJE0AKBrFqjpeYcg=="],
 
-    "@openxyz/github": ["@openxyz/github@workspace:packages/openxyz-github"],
+    "@openxyz-provider/github": ["@openxyz-provider/github@workspace:packages/openxyz-provider-github"],
 
-    "@openxyz/google": ["@openxyz/google@workspace:packages/openxyz-google"],
+    "@openxyz-provider/google": ["@openxyz-provider/google@workspace:packages/openxyz-provider-google"],
+
+    "@openxyz-provider/telegram": ["@openxyz-provider/telegram@workspace:packages/openxyz-provider-telegram"],
 
     "@openxyz/runtime": ["@openxyz/runtime@workspace:packages/openxyz-runtime"],
-
-    "@openxyz/telegram": ["@openxyz/telegram@workspace:packages/openxyz-telegram"],
 
     "@smithy/eventstream-codec": ["@smithy/eventstream-codec@4.2.13", "", { "dependencies": { "@aws-crypto/crc32": "5.2.0", "@smithy/types": "^4.14.0", "@smithy/util-hex-encoding": "^4.2.2", "tslib": "^2.6.2" } }, "sha512-vYahwBAtRaAcFbOmE9aLr12z7RiHYDSLcnogSdxfm7kKfsNa3wH+NU5r7vTeB5rKvLsWyPjVX8iH94brP7umiQ=="],
 
@@ -789,13 +789,13 @@
 
     "@chat-adapter/state-turso/@types/bun": ["@types/bun@1.3.13", "", { "dependencies": { "bun-types": "1.3.13" } }, "sha512-9fqXWk5YIHGGnUau9TEi+qdlTYDAnOj+xLCmSTwXfAIqXr2x4tytJb43E9uCvt09zJURKXwAtkoH4nLQfzeTXw=="],
 
-    "@openxyz/github/@types/bun": ["@types/bun@1.3.13", "", { "dependencies": { "bun-types": "1.3.13" } }, "sha512-9fqXWk5YIHGGnUau9TEi+qdlTYDAnOj+xLCmSTwXfAIqXr2x4tytJb43E9uCvt09zJURKXwAtkoH4nLQfzeTXw=="],
+    "@openxyz-provider/github/@types/bun": ["@types/bun@1.3.13", "", { "dependencies": { "bun-types": "1.3.13" } }, "sha512-9fqXWk5YIHGGnUau9TEi+qdlTYDAnOj+xLCmSTwXfAIqXr2x4tytJb43E9uCvt09zJURKXwAtkoH4nLQfzeTXw=="],
 
-    "@openxyz/google/@types/bun": ["@types/bun@1.3.13", "", { "dependencies": { "bun-types": "1.3.13" } }, "sha512-9fqXWk5YIHGGnUau9TEi+qdlTYDAnOj+xLCmSTwXfAIqXr2x4tytJb43E9uCvt09zJURKXwAtkoH4nLQfzeTXw=="],
+    "@openxyz-provider/google/@types/bun": ["@types/bun@1.3.13", "", { "dependencies": { "bun-types": "1.3.13" } }, "sha512-9fqXWk5YIHGGnUau9TEi+qdlTYDAnOj+xLCmSTwXfAIqXr2x4tytJb43E9uCvt09zJURKXwAtkoH4nLQfzeTXw=="],
+
+    "@openxyz-provider/telegram/@types/bun": ["@types/bun@1.3.13", "", { "dependencies": { "bun-types": "1.3.13" } }, "sha512-9fqXWk5YIHGGnUau9TEi+qdlTYDAnOj+xLCmSTwXfAIqXr2x4tytJb43E9uCvt09zJURKXwAtkoH4nLQfzeTXw=="],
 
     "@openxyz/runtime/@types/bun": ["@types/bun@1.3.13", "", { "dependencies": { "bun-types": "1.3.13" } }, "sha512-9fqXWk5YIHGGnUau9TEi+qdlTYDAnOj+xLCmSTwXfAIqXr2x4tytJb43E9uCvt09zJURKXwAtkoH4nLQfzeTXw=="],
-
-    "@openxyz/telegram/@types/bun": ["@types/bun@1.3.13", "", { "dependencies": { "bun-types": "1.3.13" } }, "sha512-9fqXWk5YIHGGnUau9TEi+qdlTYDAnOj+xLCmSTwXfAIqXr2x4tytJb43E9uCvt09zJURKXwAtkoH4nLQfzeTXw=="],
 
     "bl/buffer": ["buffer@5.7.1", "", { "dependencies": { "base64-js": "^1.3.1", "ieee754": "^1.1.13" } }, "sha512-EHcyIPBQ4BSGlvjB16k5KgAJ27CIsHY/2JBmCRReo48y9rQ3MaUzWX3KVlBa4U7MyX02HdVj0K7C3WaB3ju7FQ=="],
 
@@ -817,13 +817,13 @@
 
     "@chat-adapter/state-turso/@types/bun/bun-types": ["bun-types@1.3.13", "", { "dependencies": { "@types/node": "*" } }, "sha512-QXKeHLlOLqQX9LgYaHJfzdBaV21T63HhFJnvuRCcjZiaUDpbs5ED1MgxbMra71CsryN/1dAoXuJJJwIv/2drVA=="],
 
-    "@openxyz/github/@types/bun/bun-types": ["bun-types@1.3.13", "", { "dependencies": { "@types/node": "*" } }, "sha512-QXKeHLlOLqQX9LgYaHJfzdBaV21T63HhFJnvuRCcjZiaUDpbs5ED1MgxbMra71CsryN/1dAoXuJJJwIv/2drVA=="],
+    "@openxyz-provider/github/@types/bun/bun-types": ["bun-types@1.3.13", "", { "dependencies": { "@types/node": "*" } }, "sha512-QXKeHLlOLqQX9LgYaHJfzdBaV21T63HhFJnvuRCcjZiaUDpbs5ED1MgxbMra71CsryN/1dAoXuJJJwIv/2drVA=="],
 
-    "@openxyz/google/@types/bun/bun-types": ["bun-types@1.3.13", "", { "dependencies": { "@types/node": "*" } }, "sha512-QXKeHLlOLqQX9LgYaHJfzdBaV21T63HhFJnvuRCcjZiaUDpbs5ED1MgxbMra71CsryN/1dAoXuJJJwIv/2drVA=="],
+    "@openxyz-provider/google/@types/bun/bun-types": ["bun-types@1.3.13", "", { "dependencies": { "@types/node": "*" } }, "sha512-QXKeHLlOLqQX9LgYaHJfzdBaV21T63HhFJnvuRCcjZiaUDpbs5ED1MgxbMra71CsryN/1dAoXuJJJwIv/2drVA=="],
+
+    "@openxyz-provider/telegram/@types/bun/bun-types": ["bun-types@1.3.13", "", { "dependencies": { "@types/node": "*" } }, "sha512-QXKeHLlOLqQX9LgYaHJfzdBaV21T63HhFJnvuRCcjZiaUDpbs5ED1MgxbMra71CsryN/1dAoXuJJJwIv/2drVA=="],
 
     "@openxyz/runtime/@types/bun/bun-types": ["bun-types@1.3.13", "", { "dependencies": { "@types/node": "*" } }, "sha512-QXKeHLlOLqQX9LgYaHJfzdBaV21T63HhFJnvuRCcjZiaUDpbs5ED1MgxbMra71CsryN/1dAoXuJJJwIv/2drVA=="],
-
-    "@openxyz/telegram/@types/bun/bun-types": ["bun-types@1.3.13", "", { "dependencies": { "@types/node": "*" } }, "sha512-QXKeHLlOLqQX9LgYaHJfzdBaV21T63HhFJnvuRCcjZiaUDpbs5ED1MgxbMra71CsryN/1dAoXuJJJwIv/2drVA=="],
 
     "openxyz/@types/bun/bun-types": ["bun-types@1.3.13", "", { "dependencies": { "@types/node": "*" } }, "sha512-QXKeHLlOLqQX9LgYaHJfzdBaV21T63HhFJnvuRCcjZiaUDpbs5ED1MgxbMra71CsryN/1dAoXuJJJwIv/2drVA=="],
 
