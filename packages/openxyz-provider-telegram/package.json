@@ -10,8 +10,8 @@
   },
   "files": [
     "channel.ts",
-    "fonts/Roboto-Bold.ttf.b64",
-    "fonts/Roboto-Regular.ttf.b64",
+    "fonts/Roboto-Bold.ttf",
+    "fonts/Roboto-Regular.ttf",
     "render-table.ts"
   ],
   "dependencies": {

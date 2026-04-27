@@ -9,23 +9,22 @@ type AnyMdastNode = Parameters<typeof getNodeChildren>[0];
 
 // Vendored fonts (Roboto Regular + Bold, Apache 2.0). Vercel's Bun serverless
 // image ships no system fonts, so resvg's `loadSystemFonts: true` returns an
-// empty fontdb — text elements rasterize as blank. Disk-relative `Bun.file`
-// loads also fail post-bundle (Bun.build emits a single `server.js`, no
-// adjacent asset copy). Embedding via base64 text imports inlines the bytes
-// straight into the JS bundle — works in dev (Bun direct-run reads the
-// `.b64` file) and prod (Bun.build inlines the string literal). ~810KB
-// added to bundle. Decode happens once per worker, cached in
-// `fontBuffersPromise`.
-import RobotoRegularBase64 from "./fonts/Roboto-Regular.ttf.b64" with { type: "text" };
-import RobotoBoldBase64 from "./fonts/Roboto-Bold.ttf.b64" with { type: "text" };
+// empty fontdb — text elements rasterize as blank. `with { type: "file" }`
+// imports tell Bun's bundler to copy the asset to the build output (with
+// a hashed filename) and rewrite the import to a relative path. Works in
+// dev (Bun direct-run resolves the absolute source path) and prod
+// (`Bun.build` copies the TTFs alongside `server.js` in `funcDir/`).
+// `Bun.file(path).bytes()` reads from either location identically. Decode
+// happens once per worker, cached in `fontBuffersPromise`.
+import RobotoRegularPath from "./fonts/Roboto-Regular.ttf" with { type: "file" };
+import RobotoBoldPath from "./fonts/Roboto-Bold.ttf" with { type: "file" };
 
 let fontBuffersPromise: Promise<Buffer[]> | null = null;
 function loadFonts(): Promise<Buffer[]> {
   if (!fontBuffersPromise) {
-    fontBuffersPromise = Promise.resolve([
-      Buffer.from(RobotoRegularBase64, "base64"),
-      Buffer.from(RobotoBoldBase64, "base64"),
-    ]);
+    fontBuffersPromise = Promise.all([Bun.file(RobotoRegularPath).bytes(), Bun.file(RobotoBoldPath).bytes()]).then(
+      (arrs) => arrs.map((a) => Buffer.from(a)),
+    );
   }
   return fontBuffersPromise;
 }
