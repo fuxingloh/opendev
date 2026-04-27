@@ -153,10 +153,14 @@ export class GitHubDrive implements Drive {
     // `commit()`'s `git add` wouldn't see them (OverlayFs writes go to an
     // in-memory layer, not the underlying files, see mnemonic/077). Read-only
     // uses `OverlayFs({ readOnly: true })`: reads pass through, writes throw.
+    // `mountPoint: "/"` overrides OverlayFs's default `/home/user/project` —
+    // MountableFs forwards paths relative to its own mount, so OverlayFs must
+    // treat "/" as the root, otherwise files only resolve through a phantom
+    // `/home/user/project/` prefix.
     this.#fs =
       this.permission === "read-write"
         ? new ReadWriteFs({ root: this.#dir })
-        : new OverlayFs({ root: this.#dir, readOnly: true });
+        : new OverlayFs({ root: this.#dir, mountPoint: "/", readOnly: true });
     return this.#fs;
   }
 
