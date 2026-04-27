@@ -346,7 +346,7 @@ export class Agent {
     } catch (err) {
       console.error(`[openxyz] agent "${this.name}" run failed`, err);
       const msg = err instanceof Error ? err.message : String(err);
-      await thread.post(`⚠️ Error generating reply: ${msg}`).catch((e) => {
+      await thread.post({ markdown: `⚠️ Error generating reply: ${msg}` }).catch((e) => {
         console.error("[openxyz] fallback error post failed", e);
       });
     } finally {
@@ -459,7 +459,7 @@ export class Agent {
     const toSummarize = messages.slice(0, preserveFromIdx);
     const toPreserve = messages.slice(preserveFromIdx);
 
-    const placeholder = await thread.post("Compacting session…").catch((err) => {
+    const placeholder = await thread.post({ markdown: "Compacting session…" }).catch((err) => {
       console.warn("[openxyz] compaction placeholder post failed", err);
       return undefined;
     });

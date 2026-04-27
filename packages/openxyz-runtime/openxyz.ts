@@ -243,7 +243,7 @@ export class OpenXyz {
         const msg = err instanceof Error ? err.message : String(err);
         console.warn(`[openxyz] drive.refresh failed for ${mountPoint}: ${msg}`);
         await thread
-          .post(`⚠️ \`${mountPoint}\` — ${msg}`)
+          .post({ markdown: `⚠️ \`${mountPoint}\` — ${msg}` })
           .catch((e) => console.warn(`[openxyz] drive error post failed`, e));
       }
     }
@@ -271,7 +271,7 @@ export class OpenXyz {
         const msg = err instanceof Error ? err.message : String(err);
         console.warn(`[openxyz] drive.commit failed for ${mountPoint}: ${msg}`);
         await thread
-          .post(`⚠️ \`${mountPoint}\` — ${msg}`)
+          .post({ markdown: `⚠️ \`${mountPoint}\` — ${msg}` })
           .catch((e) => console.warn(`[openxyz] drive error post failed`, e));
       }
     }
