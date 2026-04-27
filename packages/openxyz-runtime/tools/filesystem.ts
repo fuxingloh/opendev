@@ -7,6 +7,18 @@ import { ReadOnlyFs } from "../fs/readonly";
 
 const MAX_BYTES = 50_000;
 
+function digest(content: string): string {
+  return Bun.hash(content).toString(36);
+}
+
+async function tryReadFile(shell: Bash, path: string): Promise<string | undefined> {
+  try {
+    return await shell.readFile(path);
+  } catch {
+    return undefined;
+  }
+}
+
 const DrivePermEnum = z.enum(["read-only", "read-write"]);
 
 export const FilesystemConfigSchema = z
@@ -22,6 +34,13 @@ function getMountPermission(mountPath: string, config: FilesystemConfig): Permis
 
 export class FilesystemTools {
   readonly #bash: Bash;
+  // path → content hash at last successful `read` / `write` / `edit`. Scoped
+  // to this instance, which the factory creates fresh per agent turn — so the
+  // read-set resets every turn. `edit` and `write`-over-existing require an
+  // entry here whose hash still matches the file on disk; this catches both
+  // "agent forgot to read" and "file changed since read" (including changes
+  // made by `bash` between turns or out-of-band).
+  readonly #reads = new Map<string, string>();
 
   /**
    * Build the agent's filesystem from pre-connected drives + a per-agent
@@ -55,6 +74,7 @@ export class FilesystemTools {
 
   tools(): Record<string, Tool> {
     const shell = this.#bash;
+    const reads = this.#reads;
 
     return {
       bash: tool({
@@ -103,6 +123,7 @@ export class FilesystemTools {
         }),
         execute: async ({ path, offset, limit }) => {
           const content = await shell.readFile(path);
+          reads.set(path, digest(content));
           const lines = content.split("\n");
           const start = Math.max(0, (offset ?? 1) - 1);
           const end = Math.min(lines.length, start + (limit ?? 2000));
@@ -116,23 +137,46 @@ export class FilesystemTools {
       }),
 
       write: tool({
-        description:
-          "Write a file to your workspace. Overwrites existing content. Parent directories are created automatically.",
+        description: [
+          "Write a file. Overwrites existing content. Parent directories are created automatically.",
+          "",
+          "If the file already exists you must `read` it first in this turn — even if you intend to overwrite it. The contents you saw must still be current at write time. Re-`read` if anything else may have touched the file (another tool, `bash`, a previous `edit`).",
+          "",
+          "If the file does not exist, no prior `read` is needed.",
+        ].join("\n"),
         inputSchema: z.object({
           path: z.string().describe("Absolute path to the file to write."),
           content: z.string().describe("Full file content. Use \\n for newlines."),
         }),
         execute: async ({ path, content }) => {
+          const existing = await tryReadFile(shell, path);
+          if (existing !== undefined) {
+            const recorded = reads.get(path);
+            if (recorded === undefined) {
+              throw new Error(
+                `${path} already exists. Use the \`read\` tool to read it before overwriting with \`write\`.`,
+              );
+            }
+            if (digest(existing) !== recorded) {
+              throw new Error(
+                `${path} has changed since you last read it. Re-read with the \`read\` tool before overwriting.`,
+              );
+            }
+          }
           const parent = path.slice(0, path.lastIndexOf("/"));
           if (parent && parent !== "") await shell.exec(`mkdir -p "${parent}"`, { cwd: "/workspace" });
           await shell.writeFile(path, content);
+          reads.set(path, digest(content));
           return `wrote ${content.length} bytes to ${path}`;
         },
       }),
 
       edit: tool({
-        description:
+        description: [
           "Replace an exact string in a file. Fails if the string is missing. Fails if the string appears more than once unless replaceAll is true.",
+          "",
+          "You must `read` the file in this turn before calling `edit`. If anything else may have modified the file since (another `edit`, `write`, `bash`), re-`read` first — the recorded contents must still match what's on disk.",
+        ].join("\n"),
         inputSchema: z.object({
           path: z.string().describe("Absolute path to the file to edit."),
           oldString: z.string().describe("Exact string to find. Must be unique unless replaceAll is true."),
@@ -143,7 +187,16 @@ export class FilesystemTools {
             .describe("Replace every occurrence instead of requiring uniqueness. Defaults to false."),
         }),
         execute: async ({ path, oldString, newString, replaceAll }) => {
+          const recorded = reads.get(path);
+          if (recorded === undefined) {
+            throw new Error(`You must use the \`read\` tool on ${path} before calling \`edit\`.`);
+          }
           const content = await shell.readFile(path);
+          if (digest(content) !== recorded) {
+            throw new Error(
+              `${path} has changed since you last read it. Re-read with the \`read\` tool before editing.`,
+            );
+          }
           const count = content.split(oldString).length - 1;
           if (count === 0) throw new Error(`oldString not found in ${path}`);
           if (count > 1 && !replaceAll) {
@@ -153,6 +206,7 @@ export class FilesystemTools {
           }
           const updated = replaceAll ? content.replaceAll(oldString, newString) : content.replace(oldString, newString);
           await shell.writeFile(path, updated);
+          reads.set(path, digest(updated));
           const applied = replaceAll ? count : 1;
           return `replaced ${applied} occurrence${applied === 1 ? "" : "s"} in ${path}`;
         },
