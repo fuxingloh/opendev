@@ -43,3 +43,6 @@ dist
 
 # openxyz
 .openxyz
+
+# local symlink to sibling mnemonic repo (../../@openxyz-app/mnemonic)
+/mnemonic

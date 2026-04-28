@@ -2,19 +2,17 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-> Internal scratchpad, open work, design history, and mnemonic cross-references live in `../../@openxyz-app/mnemonic/000-AGENTS.md` (a sibling repo). Read that first if you want the full context behind decisions; this file is the public-facing project guide.
+> Internal scratchpad, open work, design history, and mnemonic cross-references live in `./mnemonic/000-AGENTS.md` (a gitignored symlink to the sibling `@openxyz-app/mnemonic` repo). Read that first if you want the full context behind decisions; this file is the public-facing project guide.
 
 ## Mnemonic cross-references
 
 > "Mind-Palace"
 
-Mnemonic notes live in a **separate sibling repo** at `../../@openxyz-app/mnemonic/` (github.com:openxyz-app/mnemonic.git). Read, edit, and reference them via that relative path.
+@mnemonic/000-AGENTS.md
 
-@../../@openxyz-app/mnemonic/000-AGENTS.md
+You MUST ALWAYS look at `./mnemonic/*` when writing a new feature or bugfix — ALWAYS READ.
 
-You MUST ALWAYS look at `../../@openxyz-app/mnemonic/*` when writing a new feature or bugfix.
-
-Reference convention, sync workflow (`./sync.sh`), and editing rules all live in `../../@openxyz-app/mnemonic/000-AGENTS.md` — read that whenever creating or editing a note.
+ALWAYS RUN (`./mnemonic/sync.sh`) after editing any files in that directory to sync them.
 
 ## External references
 
@@ -32,7 +30,7 @@ The reference template is `templates/openxyz-janitor` — the team's own chief-o
 
 - `../ai` — the `ai` SDK monorepo we depend on. Source for `ToolLoopAgent`, `wrapLanguageModel`, `convertToLanguageModelPrompt`, `streamText`, middleware spec, per-provider packages (`../ai/packages/{ai,anthropic,amazon-bedrock,openai,openai-compatible,gateway,...}`). Go here when you need exact types, marker shapes, or call semantics.
 - `../chat` — the chat-sdk monorepo. Source for `Chat`, `Thread`, `Adapter`, `toAiMessages`, `@chat-adapter/*`. Go here for dispatch tiering, thread lifecycle, webhook decoding, state adapter contracts.
-- Full reference checkouts table lives in `../../@openxyz-app/mnemonic/000-AGENTS.md`.
+- Full reference checkouts table lives in `./mnemonic/000-AGENTS.md`.
 
 ## Tech direction
 
@@ -140,17 +138,6 @@ Reliable AI agent loops built on AI SDK `streamText()`. Essentials:
 6. `AbortController` propagation to both `streamText()` and tools
 7. Cost tracking with Decimal.js (float errors compound)
 8. **Skip context compaction for v1** — modern 200k+ windows rarely hit limits
-
-## Known gotchas
-
-1. `child_process.spawnSync` + `stdio: "inherit"` is unreliable for nested Bun processes — TTY handoff fails. Use `Bun.spawn` with the exact dev command.
-2. Do not import `chat` under `--conditions=browser` — transitive deps touch `document`.
-3. chat-sdk thread handlers must be fire-and-forget. Holding the lock across `await` causes `LockError` on concurrent messages.
-4. Telegram markdown posts need a plain-text fallback — the parser rejects some outputs.
-5. `MountableFs` options shape is `{ mounts: [{ mountPoint, filesystem }] }`, not `{ mounts: { path: fs } }`.
-6. `OverlayFs` writes are **copy-on-write / in-memory** — they don't hit the underlying disk. For writable drives whose edits must be visible to a downstream process (git, archiver, sync daemon), use `ReadWriteFs`. See mnemonic/077.
-7. `MountableFs` strips the `mountPoint` before forwarding to the inner FS — keys in `InMemoryFs` must be relative to mount root (`/AGENTS.md`), not absolute VFS paths (`/workspace/AGENTS.md`). See mnemonic/072.
-8. `@vercel/functions.waitUntil` is broken on Vercel's Bun runtime (short grace period, not full lifetime extension). Inline `Promise.allSettled(tasks)` before the response as the working fallback. See mnemonic/069–070.
 
 ## Code style
 
