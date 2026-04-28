@@ -3,6 +3,7 @@ import type { Message as ChatSdkMessage, MessageContext, StateAdapter } from "ch
 import type { ModelMessage, Tool } from "ai";
 import { type Channel, type Thread } from "./channels";
 import type { Drive } from "./drive";
+import type { Agent } from "./agents/agent";
 import { AgentFactory, type AgentDef } from "./agents/factory";
 import type { Model } from "./model";
 import type { SkillDef } from "./tools/skill";
@@ -263,10 +264,22 @@ export class OpenXyz {
     // it to the remote, the user needs to know. Drive throws a descriptive
     // message; runtime prefixes with the mount point so the user can tell
     // which drive failed when multiple are mounted.
-    for (const [mountPoint, drive] of Object.entries(this.runtime.drives)) {
-      if (!drive.commit) continue;
+    //
+    // `getSummary` is lazy + memoized — the agent only summarizes if at
+    // least one drive actually has something to flush. Drive decides
+    // dirty-ness internally (git status, etc.) and skips calling
+    // `getSummary` when there's nothing to commit. Re-uses the same
+    // channel + thread session content the streaming call just emitted,
+    // so the prefix is identical (full prompt-cache hit, mnemonic/073) —
+    // only the trailing "summarize for commit" instruction is fresh tokens.
+    const writable = Object.entries(this.runtime.drives).filter(([, d]) => d.commit);
+    if (writable.length === 0) return;
+
+    const getSummary = once(() => getTurnSummary(agent, channel, thread));
+
+    for (const [mountPoint, drive] of writable) {
       try {
-        await drive.commit();
+        await drive.commit!({ getSummary });
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
         console.warn(`[openxyz] drive.commit failed for ${mountPoint}: ${msg}`);
@@ -283,5 +296,45 @@ export class OpenXyz {
     if (cleanup && cleanup.length > 0) {
       await Promise.allSettled(cleanup.map((fn) => fn()));
     }
+  }
+}
+
+/** Memoize a zero-arg async — first call runs, subsequent calls return the same promise. */
+function once<T>(fn: () => Promise<T>): () => Promise<T> {
+  let cached: Promise<T> | undefined;
+  return () => (cached ??= fn());
+}
+
+/**
+ * Ask the agent for a one-line description of the turn's edits, used as
+ * the commit message returned to each dirty drive. Pulls the channel's
+ * session — already updated with the just-finished turn by `agent.run` —
+ * and re-uses it as the `generate()` prompt, so the prefix is identical
+ * to the streaming call (full prompt-cache hit). Only the trailing
+ * "summarize for commit" instruction is fresh. Fail-open with a generic
+ * timestamp fallback so drives always receive a non-empty string.
+ */
+async function getTurnSummary(agent: Agent, channel: Channel, thread: Thread): Promise<string> {
+  const fallback = `openxyz: edits from ${new Date().toISOString()}`;
+  try {
+    const session = await channel.getSession(thread);
+    const history = await session.messages();
+    if (history.length === 0) return fallback;
+    const result = await agent.generate({
+      prompt: [
+        ...history,
+        {
+          role: "user" as const,
+          content:
+            "Write a one-line git-style commit message (≤72 characters, imperative mood, no quotes, no trailing period) describing the file edits you made in your last turn. If you didn't edit any files, output exactly: openxyz: no edits. Output the message only — no preamble, no explanation.",
+        },
+      ],
+    });
+    const first = result.text.trim().split("\n")[0]?.trim();
+    if (!first) return fallback;
+    return first.length > 200 ? first.slice(0, 200) : first;
+  } catch (err) {
+    console.warn("[openxyz] commit summary failed, using fallback", err);
+    return fallback;
   }
 }

@@ -164,13 +164,19 @@ export class GitHubDrive implements Drive {
     return this.#fs;
   }
 
-  async commit(): Promise<void> {
+  async commit(ctx: { getSummary: () => Promise<string> }): Promise<void> {
     if (this.permission === "read-only") return;
     if (!this.#dir) return;
     const dir = this.#dir;
 
+    // `stageAll` is also our dirty-check — it runs `statusMatrix` and stages
+    // any divergent paths. No edits → return without invoking `getSummary`,
+    // which means no LLM call when this drive is the only writable one and
+    // the turn was read-only.
     const dirty = await stageAll(dir);
     if (!dirty) return;
+
+    const summary = await ctx.getSummary();
 
     // Session branch naming: `openxyz/<timestamp>-<short-uuid>`. No access to
     // `thread.id` anymore — the runtime-held ID isn't passed to drives. A
@@ -182,7 +188,7 @@ export class GitHubDrive implements Drive {
       fs,
       dir,
       author: this.author,
-      message: `openxyz: edits from ${new Date().toISOString()}`,
+      message: summary,
     });
 
     // Always push the session branch first — durable record even if merge fails.
