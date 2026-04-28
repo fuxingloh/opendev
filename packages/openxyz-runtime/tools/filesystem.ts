@@ -121,7 +121,8 @@ export class FilesystemTools {
       }),
 
       read: tool({
-        description: "Read a file from your workspace or a mounted backend. Returns line-numbered content.",
+        description:
+          "Read a file from your workspace or a mounted backend. Returns line-numbered content. Defaults to the first 2000 lines; pass `offset` and `limit` to read further into long files. Every result reports the visible line range and total line count — if you want more of the file, call `read` again with `offset` set to the next unseen line.",
         inputSchema: z.object({
           path: z.string().describe(`Absolute path, e.g. /workspace/AGENTS.md`),
           offset: z.number().optional().describe("Line number to start reading from (1-indexed). Defaults to 1."),
@@ -131,14 +132,18 @@ export class FilesystemTools {
           const content = await shell.readFile(path);
           reads.set(path, digest(content));
           const lines = content.split("\n");
+          const total = lines.length;
           const start = Math.max(0, (offset ?? 1) - 1);
-          const end = Math.min(lines.length, start + (limit ?? 2000));
+          const end = Math.min(total, start + (limit ?? 2000));
           const numbered = lines
             .slice(start, end)
             .map((line, i) => `${String(start + i + 1).padStart(6)}  ${line}`)
             .join("\n");
-          const more = lines.length > end ? `\n[... ${lines.length - end} more lines]` : "";
-          return numbered + more;
+          const footer =
+            end < total
+              ? `\n[showing lines ${start + 1}-${end} of ${total} — call read again with offset=${end + 1} to continue]`
+              : `\n[end of file — ${total} lines total]`;
+          return numbered + footer;
         },
       }),
 

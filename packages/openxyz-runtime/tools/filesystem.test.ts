@@ -106,6 +106,25 @@ describe("FilesystemTools — read-before-write gate", () => {
   });
 });
 
+describe("FilesystemTools — read footer reports shape", () => {
+  test("full read footer reports total line count", async () => {
+    const { tools } = mkTools({ "/AGENTS.md": "a\nb\nc\n" });
+    const result = (await call(tools.read as never, { path: "/workspace/AGENTS.md" })) as string;
+    expect(result).toMatch(/\[end of file — 4 lines total\]/);
+  });
+
+  test("truncated read footer includes window, total, and continuation offset", async () => {
+    const lines = Array.from({ length: 10 }, (_, i) => `line${i + 1}`).join("\n");
+    const { tools } = mkTools({ "/big.md": lines });
+    const result = (await call(tools.read as never, {
+      path: "/workspace/big.md",
+      offset: 1,
+      limit: 3,
+    })) as string;
+    expect(result).toMatch(/\[showing lines 1-3 of 10 — call read again with offset=4 to continue\]/);
+  });
+});
+
 describe("FilesystemTools — per-mount permission config", () => {
   function mk(config: ConstructorParameters<typeof FilesystemTools>[1]) {
     const ws: Drive = { fs: () => new InMemoryFs({}) };
