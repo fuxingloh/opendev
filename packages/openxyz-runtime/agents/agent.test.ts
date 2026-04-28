@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import type { ModelMessage } from "ai";
 import { MockLanguageModelV3 } from "ai/test";
-import { Agent, hardTruncate, safeBoundary } from "./agent.ts";
+import { Agent, buildSystemPrompt, hardTruncate, safeBoundary } from "./agent.ts";
 import type { AgentDef, AgentFactory } from "./factory.ts";
 import type { Model } from "../model.ts";
 
@@ -270,5 +270,73 @@ describe("Agent.generate", () => {
     });
     const result = await agent.generate({ prompt: "summarize" });
     expect(result.text).toBe("done");
+  });
+});
+
+// ---- buildSystemPrompt --------------------------------------------------
+
+describe("buildSystemPrompt", () => {
+  const baseConfig = {
+    systemPrompt: "BASE",
+    tools: {},
+    skills: [],
+    def: defOf("test"),
+  };
+
+  test("emits no md sections when mds absent", () => {
+    const out = buildSystemPrompt(baseConfig);
+    expect(out).not.toContain("## SOUL.md");
+    expect(out).not.toContain("## USER.md");
+    expect(out).not.toContain("## AGENTS.md");
+  });
+
+  test("renders SOUL → USER → AGENTS in order, each with filename heading", () => {
+    const out = buildSystemPrompt({
+      ...baseConfig,
+      mds: { "SOUL.md": "soul-body", "USER.md": "user-body", "AGENTS.md": "agents-body" },
+    });
+    const soulIdx = out.indexOf("## SOUL.md");
+    const userIdx = out.indexOf("## USER.md");
+    const agentsIdx = out.indexOf("## AGENTS.md");
+    expect(soulIdx).toBeGreaterThan(-1);
+    expect(userIdx).toBeGreaterThan(soulIdx);
+    expect(agentsIdx).toBeGreaterThan(userIdx);
+    expect(out).toContain("soul-body");
+    expect(out).toContain("user-body");
+    expect(out).toContain("agents-body");
+  });
+
+  test("only present md files render", () => {
+    const out = buildSystemPrompt({ ...baseConfig, mds: { "AGENTS.md": "ops" } });
+    expect(out).not.toContain("## SOUL.md");
+    expect(out).not.toContain("## USER.md");
+    expect(out).toContain("## AGENTS.md");
+    expect(out).toContain("ops");
+  });
+
+  test("unknown md keys are ignored", () => {
+    const out = buildSystemPrompt({
+      ...baseConfig,
+      mds: { "USERS.md": "should-not-render", "MEMORY.md": "also-no" },
+    });
+    expect(out).not.toContain("## USERS.md");
+    expect(out).not.toContain("## MEMORY.md");
+    expect(out).not.toContain("should-not-render");
+    expect(out).not.toContain("also-no");
+  });
+
+  test("whitespace-only md body is skipped", () => {
+    const out = buildSystemPrompt({ ...baseConfig, mds: { "SOUL.md": "   \n  ", "AGENTS.md": "real content" } });
+    expect(out).not.toContain("## SOUL.md");
+    expect(out).toContain("## AGENTS.md");
+  });
+
+  test("base systemPrompt leads, mds sections follow", () => {
+    const out = buildSystemPrompt({
+      ...baseConfig,
+      systemPrompt: "BASELINE_MARKER",
+      mds: { "AGENTS.md": "agents-body" },
+    });
+    expect(out.indexOf("BASELINE_MARKER")).toBeLessThan(out.indexOf("## AGENTS.md"));
   });
 });

@@ -244,12 +244,13 @@ export class Agent {
     tools: Record<string, Tool>;
     skills: SkillDef[];
     /**
-     * Project-wide markdown files (AGENTS.md today; USER.md, MEMORY.md,
-     * BOOTSTRAP.md, HEARTBEAT.md under mnemonic/039). Passed through as the
-     * whole bag so Agent can opt into new entries without a factory change.
-     * Shape mirrors `OpenXyzRuntime.mds` — keep them in sync.
+     * Project-wide markdown files keyed by filename — `AGENTS.md` / `SOUL.md`
+     * / `USER.md` today (mnemonic/039, mnemonic/121). `MEMORY.md` /
+     * `HEARTBEAT.md` deferred. Passed through as the whole bag so Agent can
+     * opt into new entries without a factory change; only filenames
+     * hardcoded in `buildSystemPrompt` actually render.
      */
-    mds?: { agents?: string };
+    mds?: Record<string, string>;
   }) {
     this.name = config.def.name;
     this.#factory = config.factory;
@@ -280,7 +281,7 @@ export class Agent {
           tools: config.tools,
           skills: config.skills,
           def: config.def,
-          projectInstructions: config.mds?.agents,
+          mds: config.mds,
         }),
       },
       tools: config.tools,
@@ -552,23 +553,39 @@ export function safeBoundary(messages: ModelMessage[], start: number): number {
 }
 
 /**
- * Materialize the full system-message content from the pieces a template
- * yields: the model-family baseline, project AGENTS.md, per-agent body, and
- * structural metadata (skills index, filesystem env). Order matters for
- * prompt caching — stable prefix (model + project) leads so the cache key
- * stays hot across agents sharing a model; per-agent sections trail.
+ * Filenames rendered into the system prompt, in load order. SOUL first
+ * (constitution), USER next (who's being talked to), AGENTS last
+ * (operational rules can reference the persona + user context above them).
+ * Anything else in `mds` is ignored. See mnemonic/121.
+ *
+ * Exported for testing — treat as internal.
  */
-function buildSystemPrompt(config: {
+export const SYSTEM_PROMPT_MD_FILES = ["SOUL.md", "USER.md", "AGENTS.md"] as const;
+
+/**
+ * Materialize the full system-message content from the pieces a template
+ * yields: the model-family baseline, project markdown files (SOUL → USER →
+ * AGENTS, per mnemonic/039 + openclaw convention), per-agent body, and
+ * structural metadata (skills index, filesystem env). Order matters for
+ * prompt caching — stable prefix (model + project mds) leads so the cache
+ * key stays hot across agents sharing a model; per-agent sections trail.
+ *
+ * Exported for testing — treat as internal.
+ */
+export function buildSystemPrompt(config: {
   systemPrompt: string;
   tools: Record<string, Tool>;
   skills: SkillDef[];
   def: AgentDef;
-  projectInstructions?: string;
+  mds?: Record<string, string>;
 }): string {
   const parts = [config.systemPrompt];
 
-  if (config.projectInstructions) {
-    parts.push("## Project Instructions\n\n" + config.projectInstructions.trim());
+  for (const filename of SYSTEM_PROMPT_MD_FILES) {
+    const body = config.mds?.[filename];
+    if (body && body.trim().length > 0) {
+      parts.push(`## ${filename}\n\n${body.trim()}`);
+    }
   }
 
   // Skills index is only useful when the agent can actually load them — if

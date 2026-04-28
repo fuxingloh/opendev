@@ -105,3 +105,24 @@ describe("FilesystemTools — read-before-write gate", () => {
     expect(result).toMatch(/replaced 1 occurrence/);
   });
 });
+
+describe("FilesystemTools — per-mount permission config", () => {
+  function mk(config: ConstructorParameters<typeof FilesystemTools>[1]) {
+    const ws: Drive = { fs: () => new InMemoryFs({}) };
+    const notes: Drive = { fs: () => new InMemoryFs({ "/note.md": "hi\n" }) };
+    const drives = { "/workspace": ws, "/mnt/notes": notes };
+    return new FilesystemTools(drives, config).tools();
+  }
+
+  test("`*` fallback applies read-only to unlisted mounts while explicit /workspace stays read-write", async () => {
+    const tools = mk({ "/workspace": "read-write", "*": "read-only" });
+    await call(tools.read as never, { path: "/mnt/notes/note.md" });
+    expect(call(tools.write as never, { path: "/mnt/notes/note.md", content: "x" })).rejects.toThrow();
+    await call(tools.write as never, { path: "/workspace/new.md", content: "x" });
+  });
+
+  test("without `*`, unlisted mounts are dropped entirely", async () => {
+    const tools = mk({ "/workspace": "read-write" });
+    expect(call(tools.read as never, { path: "/mnt/notes/note.md" })).rejects.toThrow();
+  });
+});

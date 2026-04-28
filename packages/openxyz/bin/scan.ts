@@ -1,6 +1,3 @@
-import { existsSync } from "node:fs";
-import { join } from "node:path";
-
 /**
  * Filesystem enumeration of a template. No module execution, no file reads —
  * just paths keyed by name. Consumers decide what to do with them:
@@ -23,11 +20,23 @@ export type OpenXyzFiles = {
     /** Template-provided `Drive` instances. Filename `drives/<name>.ts` → mount `/mnt/<name>/`. */
     drives: Record<string, string>;
     skills: Record<string, string>;
-    /** Top-level markdown injected into prompts, e.g. `agents` → `AGENTS.md`. */
+    /**
+     * Top-level markdown injected into prompts. Keyed by the actual filename
+     * (`AGENTS.md`, `SOUL.md`, `USER.md`) — no translation, no aliases.
+     * Any other top-level `*.md` (except `README.md`) triggers a warning at
+     * scan time so users notice typos / unsupported files. See mnemonic/121.
+     */
     mds: Record<string, string>;
   };
   files: string[];
 };
+
+/**
+ * Markdown files we lift out of the template root and inject into the system
+ * prompt. Exact filename match — no aliases, no lowercase variants. Load
+ * order lives in `buildSystemPrompt` (`agents/agent.ts`), not here.
+ */
+const MD_FILES = ["SOUL.md", "USER.md", "AGENTS.md"] as const;
 
 export async function scanDir(cwd: string): Promise<OpenXyzFiles> {
   const [channels, tools, agents, models, drives, skills, files] = await Promise.all([
@@ -40,8 +49,20 @@ export async function scanDir(cwd: string): Promise<OpenXyzFiles> {
     scanFiles(cwd),
   ]);
 
+  // Sweep top-level `*.md`. Canonicals (`MD_FILES`) load. README.md is a
+  // template author's concern — skip silently, any case. Anything else
+  // gets a warning so users notice typos / unsupported files instead of
+  // wondering why their `Agents.md` or `notes.md` had no effect.
+  const supported = new Set<string>(MD_FILES);
   const mds: Record<string, string> = {};
-  if (existsSync(join(cwd, "AGENTS.md"))) mds.agents = "AGENTS.md";
+  for await (const entry of new Bun.Glob("*.md").scan({ cwd, onlyFiles: true })) {
+    if (supported.has(entry)) {
+      mds[entry] = entry;
+      continue;
+    }
+    if (entry.toLowerCase() === "readme.md") continue;
+    console.warn(`[openxyz] "${entry}" not loaded — only ${MD_FILES.join(", ")} are injected into the system prompt`);
+  }
 
   return { cwd, template: { channels, tools, agents, models, drives, skills, mds }, files };
 }

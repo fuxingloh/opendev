@@ -21,15 +21,20 @@ async function tryReadFile(shell: Bash, path: string): Promise<string | undefine
 
 const DrivePermEnum = z.enum(["read-only", "read-write"]);
 
+// Record form keys are absolute mount paths (`/workspace`, `/mnt/notes`, …).
+// `*` is a fallback applied to any mount not listed explicitly — lets agents
+// say "/workspace read-write, everything else read-only" without enumerating
+// template-defined mounts at agent-definition time.
 export const FilesystemConfigSchema = z
-  .union([DrivePermEnum, z.record(z.string().startsWith("/"), DrivePermEnum)])
+  .union([DrivePermEnum, z.record(z.union([z.literal("*"), z.string().startsWith("/")]), DrivePermEnum)])
   .default("read-write");
 
 export type FilesystemConfig = z.infer<typeof FilesystemConfigSchema>;
 
 function getMountPermission(mountPath: string, config: FilesystemConfig): Permission | undefined {
   if (typeof config === "string") return config;
-  return config[mountPath];
+  if (mountPath in config) return config[mountPath];
+  return config["*"];
 }
 
 export class FilesystemTools {
@@ -51,8 +56,9 @@ export class FilesystemTools {
    *   `/workspace`, which is always present — and has already called
    *   `refresh()` on each.
    * - `config` decides which paths this agent can see and at what permission.
-   *   String form applies uniformly; record form gates per mount path and
-   *   drops unlisted paths.
+   *   String form applies uniformly; record form gates per mount path. In
+   *   record form a `*` key is a fallback for any mount not listed explicitly;
+   *   without `*`, unlisted mounts are dropped.
    *
    * When the config says a mount is `read-only` but the drive itself is
    * read-write capable, we wrap in `ReadOnlyFs` to enforce the agent's

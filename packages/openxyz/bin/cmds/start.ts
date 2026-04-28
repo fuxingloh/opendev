@@ -121,8 +121,12 @@ async function loadRuntime(scan: OpenXyzFiles): Promise<OpenXyzRuntime> {
   }
   skills.sort((a, b) => a.name.localeCompare(b.name));
 
-  const mds: { agents?: string } = {};
-  if (t.mds.agents) mds.agents = await Bun.file(abs(t.mds.agents)).text();
+  const mds: Record<string, string> = {};
+  await Promise.all(
+    Object.entries(t.mds).map(async ([name, path]) => {
+      mds[name] = await Bun.file(abs(path)).text();
+    }),
+  );
 
   // Drives: WorkspaceDrive is always mounted at /workspace. Template-provided
   // `drives/<name>.ts` files mount at `/mnt/<name>/`.
