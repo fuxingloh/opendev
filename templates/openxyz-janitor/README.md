@@ -11,7 +11,7 @@ The dogfood template. A strategy-focused Chief of Staff that the OpenXyz team us
 
 It does _not_ write code, manage tickets, or run standups. Those belong to the team (and their coding agents).
 
-DM-only personal assistant. Not designed for group chats. If you want a group-chat bot, see `templates/group-agent`. If you want a general personal knowledge base, see `templates/pkbm-agent`.
+DM-only personal assistant. Not designed for group chats. If you want a group-chat bot, see `templates/openfamily`. If you want a general personal knowledge base, see `templates/openbrain`.
 
 ## Who it's for
 

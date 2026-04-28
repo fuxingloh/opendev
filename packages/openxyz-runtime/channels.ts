@@ -92,7 +92,7 @@ export abstract class Channel<Raw = unknown> {
   /**
    * Optional message-level predicate. Concrete adapters' `context()` should
    * drop messages where this returns `false`. Adapter-agnostic shape —
-   * templates override it to scope context (e.g. PKBM-in-a-group filtering).
+   * templates override it to scope context (e.g. brain-in-a-group filtering).
    */
   filter?(message: Message<Raw>, thread: Thread): boolean;
 

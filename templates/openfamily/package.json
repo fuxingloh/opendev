@@ -1,5 +1,5 @@
 {
-  "name": "group-agent",
+  "name": "openfamily",
   "private": true,
   "scripts": {
     "build": "openxyz build",

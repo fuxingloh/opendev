@@ -2,7 +2,7 @@ import { isReplyToBot, Message, TelegramChannel, type TelegramRaw, Thread } from
 import { readEnv, z } from "openxyz/env";
 
 const allowlist = readEnv("TELEGRAM_ALLOWLIST", {
-  description: "Comma-separated Telegram user IDs this PKBM agent serves",
+  description: "Comma-separated Telegram user IDs this brain serves (one person, or a small team)",
   schema: z.string().transform((s) => new Set(s.split(",").map((v) => v.trim()))),
 });
 

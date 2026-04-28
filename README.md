@@ -19,7 +19,7 @@ bun --filter=openxyz-janitor start
 - `packages/openxyz-runtime` (`@openxyz/runtime`) — the engine: agent loop, tool registry, VFS (`/workspace` + `/mnt/*`), `Drive` and `Channel` interfaces, session store, streaming.
 - `packages/openxyz-provider-*` (`@openxyz-provider/<vendor>`) — vendor integrations (Telegram, GitHub, Google, ...). Each ships any mix of `/channel`, `/drive`, `/tools`, `/model`, `/auth`.
 - `packages/openxyz-auth` — auth primitives.
-- `templates/openxyz-janitor` — reference template, dogfooded as the team's chief-of-staff. Other templates: `pkbm-agent`, `group-agent`.
+- `templates/openxyz-janitor` — reference template, dogfooded as the team's chief-of-staff. Other templates: `openbrain`, `openfamily`.
 
 ## Template shape
 

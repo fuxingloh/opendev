@@ -1,5 +1,5 @@
 {
-  "name": "pkbm-agent",
+  "name": "openbrain",
   "private": true,
   "scripts": {
     "build": "openxyz build",

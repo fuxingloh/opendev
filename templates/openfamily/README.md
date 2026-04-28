@@ -1,4 +1,4 @@
-# group-agent
+# OpenFamily
 
 A **group-chat participant**. Drop it into a Telegram group — family, friends, book club, project channel, whatever — and it lurks until addressed, then joins the conversation briefly and gets out of the way.
 
@@ -29,7 +29,7 @@ It deliberately does _not_ moderate, police content, or summarize unprompted. It
    - `TELEGRAM_GROUP_ALLOWLIST` — comma-separated group chat IDs where the bot is allowed to participate (the allowlist is **groups**, not users — so the bot can't be dragged into a stranger's group if someone adds it uninvited)
    - `OPENXYZ_MODEL` — e.g. `bedrock/zai.glm-5`, `openai/gpt-5`; plus any provider credentials
 4. From the repo root: `bun install`
-5. Run it: `cd templates/group-agent && bun start`
+5. Run it: `cd templates/openfamily && bun start`
 
 ## Deploy to Vercel
 
@@ -37,7 +37,7 @@ It deliberately does _not_ moderate, police content, or summarize unprompted. It
 
 ## Why no DMs?
 
-DMs are explicitly rejected — the persona and context handling are tuned for multi-participant conversations. If you want a one-on-one bot, use `templates/pkbm-agent` (knowledge base) or `templates/openxyz-janitor` (project chief-of-staff).
+DMs are explicitly rejected — the persona and context handling are tuned for multi-participant conversations. If you want a one-on-one bot, use `templates/openbrain` (knowledge base) or `templates/openxyz-janitor` (project chief-of-staff).
 
 ## Making it yours
 
@@ -48,7 +48,7 @@ DMs are explicitly rejected — the persona and context handling are tuned for m
 ## Layout
 
 ```
-group-agent/
+openfamily/
 ├── AGENTS.md              # the persona prompt (guest-mode behavior)
 ├── channels/telegram.ts   # group allowlist + mention/reply gate
 └── package.json
