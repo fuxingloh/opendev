@@ -370,23 +370,12 @@ export class TursoStateAdapter implements StateAdapter {
   }
 
   private async ensureSchema(): Promise<void> {
-    // The two drivers diverge here, by design — not by version skew:
-    //   - `@tursodatabase/serverless` (HTTP/Hrana) exposes `Connection.batch(string[])`,
-    //     which ships every parameter-less statement in one request. ~500ms saved
-    //     on cold-start vs. 11 sequential `exec()` round-trips (mnemonic/125 #1).
-    //   - `@tursodatabase/database` (native NAPI binding) has no `batch()` on any
-    //     released or prerelease version — verified up to 0.6.0-pre.24. SQLite
-    //     runs in-process, so each `exec()` is a microsecond function call;
-    //     batching has nothing to amortize. The loop fallback is steady-state
-    //     for local dev, not a workaround for outdated deps.
-    // Unified API only arrives if/when we migrate to `@libsql/client` (see
-    // mnemonic/125 #9), which exposes `execute`/`batch` on both transports.
-    const client = this.client as { batch?: (statements: string[]) => Promise<unknown> };
-    if (typeof client.batch === "function") {
-      await client.batch(SCHEMA_SQL);
-      return;
-    }
-    for (const sql of SCHEMA_SQL) await this.client.exec(sql);
+    // Both drivers' `exec()` accept multi-statement SQL in a single call
+    // (mnemonic/125 #1). Serverless routes through Hrana's `sequence` request
+    // — one HTTP round-trip for all 11 statements (vs. 11 sequential RTs if
+    // we looped). Native binding runs them in-process, microseconds either
+    // way. No need to feature-detect `batch()`; one call covers both.
+    await this.client.exec(SCHEMA_SQL.join(";\n") + ";");
   }
 
   private ensureConnected(): void {

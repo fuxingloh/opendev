@@ -144,29 +144,24 @@ describe("TursoStateAdapter", () => {
         await adapter.connect();
       });
 
-      it("uses client.batch() for schema when available", async () => {
-        // Serverless `Connection` exposes `batch(string[])` — one HTTP RT for
-        // all schema statements. Native `Database` doesn't, so we wrap the
-        // real db and assert the adapter prefers batch.
+      it("issues schema as one multi-statement exec call", async () => {
+        // Both drivers' `exec()` accept ;-separated statements in a single
+        // call — one HTTP RT on serverless, microseconds on native. Looping
+        // would pay 11 sequential RTs on cold start (mnemonic/125 #1). This
+        // pins the cold-start contract.
         const { db: d, cleanup } = await makeTmpDb();
         try {
-          const batch = mock(async (statements: string[]) => {
-            for (const sql of statements) await d.exec(sql);
-          });
-          const adapterExec = mock();
-          const wrapped = new Proxy(d, {
-            get(target, prop, receiver) {
-              if (prop === "batch") return batch;
-              if (prop === "exec") return adapterExec;
-              return Reflect.get(target, prop, receiver);
-            },
-          });
-          const a = new TursoStateAdapter({ client: wrapped as never, logger: mockLogger });
+          const execSpy = spyOn(d, "exec");
+          const a = new TursoStateAdapter({ client: d, logger: mockLogger });
           await a.connect();
-          expect(batch).toHaveBeenCalledTimes(1);
-          expect(batch.mock.calls[0]?.[0]?.length).toBeGreaterThan(1);
-          // ensureSchema must not fall back to per-statement exec when batch exists
-          expect(adapterExec).not.toHaveBeenCalled();
+          expect(execSpy).toHaveBeenCalledTimes(1);
+          const sql = execSpy.mock.calls[0]?.[0] as string;
+          // The single string must carry every schema statement.
+          expect(sql).toContain("CREATE TABLE IF NOT EXISTS chat_state_subscriptions");
+          expect(sql).toContain("CREATE TABLE IF NOT EXISTS chat_state_locks");
+          expect(sql).toContain("CREATE TABLE IF NOT EXISTS chat_state_cache");
+          expect(sql).toContain("CREATE TABLE IF NOT EXISTS chat_state_lists");
+          expect(sql).toContain("CREATE TABLE IF NOT EXISTS chat_state_queues");
           await a.disconnect();
         } finally {
           await cleanup();
