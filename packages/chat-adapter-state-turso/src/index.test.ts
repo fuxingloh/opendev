@@ -629,5 +629,167 @@ describe("TursoStateAdapter", () => {
         expect(await adapter.get("k")).toBe("v");
       });
     });
+
+    describe("chat-sdk webhook integration smoke", () => {
+      // Replays the exact call sequences chat-sdk's `processMessage` /
+      // `handleQueueOrDebounce` / `drainQueue` make on a webhook, against
+      // our real adapter + a real local Turso file. No mocks. Closes the
+      // "trust upstream's premise" gap (mnemonic/125 — conformance audit):
+      // unit tests pin per-method behavior; this pins the *sequences*
+      // chat-sdk actually exercises.
+
+      const LOCK_TTL = 30_000;
+      const QUEUE_TTL = 90_000;
+      const DEDUPE_TTL = 60_000;
+      const lockKey = "telegram:42";
+
+      const queueEntry = (id: string, text: string) => ({
+        message: { id, text, author: { userName: "u" } },
+        enqueuedAt: Date.now(),
+        expiresAt: Date.now() + QUEUE_TTL,
+      });
+
+      it("lone-message happy path: dedupe → lock → enqueue → drain → release", async () => {
+        const dedupeKey = `dedupe:telegram:msg-1`;
+
+        // 1. Dedupe — first arrival wins.
+        expect(await adapter.setIfNotExists(dedupeKey, true, DEDUPE_TTL)).toBe(true);
+
+        // 2. Acquire lock (queue-debounce strategy always tries).
+        const lock = await adapter.acquireLock(lockKey, LOCK_TTL);
+        expect(lock).not.toBeNull();
+        if (!lock) throw new Error("unreachable");
+
+        // 3. Enqueue self (queue-debounce always enqueues).
+        const depth = await adapter.enqueue(lockKey, queueEntry("msg-1", "hi") as never, 10);
+        expect(depth).toBe(1);
+
+        // 4. Extend lock after debounce sleep (skipped here).
+        expect(await adapter.extendLock(lock, LOCK_TTL)).toBe(true);
+
+        // 5. drainQueue: collect every pending entry. Should yield exactly msg-1.
+        const drained: string[] = [];
+        let next = await adapter.dequeue(lockKey);
+        while (next) {
+          drained.push(next.message.id as string);
+          next = await adapter.dequeue(lockKey);
+        }
+        expect(drained).toEqual(["msg-1"]);
+
+        // 6. Release lock — reusing the lockKey post-release must succeed.
+        await adapter.releaseLock(lock);
+        const second = await adapter.acquireLock(lockKey, LOCK_TTL);
+        expect(second).not.toBeNull();
+        if (second) await adapter.releaseLock(second);
+      });
+
+      it("burst arrival with held lock: enqueue 3, drain after release picks last + skipped=[1,2]", async () => {
+        // Mirrors chat-sdk's `concurrency: queue` burst test — pre-acquire
+        // the lock as if a handler is busy, fire 3 webhook arrivals (each
+        // dedupe-passes + tries to acquire-lock + falls through to enqueue),
+        // then release the lock and drain. drainQueue collects all pending,
+        // dispatches the latest with skipped=[older], and the queue empties.
+        const otherInstanceLock = await adapter.acquireLock(lockKey, LOCK_TTL);
+        expect(otherInstanceLock).not.toBeNull();
+
+        for (const id of ["m1", "m2", "m3"]) {
+          // Each webhook: dedupe insert, try-acquire (fails — held), enqueue.
+          expect(await adapter.setIfNotExists(`dedupe:${id}`, true, DEDUPE_TTL)).toBe(true);
+          const failed = await adapter.acquireLock(lockKey, LOCK_TTL);
+          expect(failed).toBeNull();
+          await adapter.enqueue(lockKey, queueEntry(id, id) as never, 10);
+        }
+        expect(await adapter.queueDepth(lockKey)).toBe(3);
+
+        // Force release (chat-sdk's `force` resolution path, or the holder's
+        // own release at end of its turn).
+        await adapter.forceReleaseLock(lockKey);
+
+        // New webhook arrives, takes the lock, drains.
+        const fresh = await adapter.acquireLock(lockKey, LOCK_TTL);
+        expect(fresh).not.toBeNull();
+        if (!fresh) throw new Error("unreachable");
+
+        const collected: string[] = [];
+        let next = await adapter.dequeue(lockKey);
+        while (next) {
+          collected.push(next.message.id as string);
+          next = await adapter.dequeue(lockKey);
+        }
+        // FIFO order. drainQueue inside chat-sdk picks the *last* and reports
+        // earlier as `skipped` — that's a chat-sdk-side decision, not the
+        // adapter's. Adapter contract: deliver everything in insertion order.
+        expect(collected).toEqual(["m1", "m2", "m3"]);
+        await adapter.releaseLock(fresh);
+      });
+
+      it("debounce strategy: enqueue with maxSize=1 keeps only the latest", async () => {
+        // chat-sdk's pure `debounce` strategy depends on the adapter
+        // overwriting the slot. mnemonic/125 audit caught this.
+        await adapter.enqueue(lockKey, queueEntry("d1", "first") as never, 1);
+        await adapter.enqueue(lockKey, queueEntry("d2", "second") as never, 1);
+        await adapter.enqueue(lockKey, queueEntry("d3", "third") as never, 1);
+        expect(await adapter.queueDepth(lockKey)).toBe(1);
+        const only = await adapter.dequeue(lockKey);
+        expect(only?.message.id).toBe("d3");
+        expect(await adapter.dequeue(lockKey)).toBeNull();
+      });
+
+      it("duplicate webhook delivery: dedupe blocks the second arrival", async () => {
+        // Telegram's "second delivery" or chat-sdk's multi-path receipt
+        // (Slack message + app_mention) — same message.id arrives twice,
+        // dedupe must stop the second.
+        const key = "dedupe:telegram:dup-1";
+        expect(await adapter.setIfNotExists(key, true, DEDUPE_TTL)).toBe(true);
+        expect(await adapter.setIfNotExists(key, true, DEDUPE_TTL)).toBe(false);
+      });
+
+      it("two warm instances racing on the same DB: exactly one wins the lock", async () => {
+        // Fluid Compute can land two concurrent webhooks on different warm
+        // instances, each with its own client connected to the same Turso
+        // DB. The atomic upsert (107 #2a) must serialize them across
+        // connections, not just within one. Open two separate clients on
+        // the same file and race them.
+        const { path, cleanup } = tmpFilePath();
+        const dbA = await connect(path);
+        const dbB = await connect(path);
+        const a = new TursoStateAdapter({ client: dbA, logger: mockLogger });
+        const b = new TursoStateAdapter({ client: dbB, logger: mockLogger });
+        try {
+          await a.connect();
+          await b.connect();
+          const results = await Promise.all([
+            a.acquireLock("race-thread", LOCK_TTL),
+            b.acquireLock("race-thread", LOCK_TTL),
+          ]);
+          const winners = results.filter((r) => r !== null);
+          expect(winners.length).toBe(1);
+        } finally {
+          await a.disconnect();
+          await b.disconnect();
+          await dbA.close();
+          await dbB.close();
+          cleanup();
+        }
+      });
+
+      it("message history: rolling window with TTL refresh and maxLength trim", async () => {
+        // Telegram path: chat-sdk persists every incoming message via
+        // `appendToList` with maxLength=100, ttl=7d. Replays the rolling
+        // window contract: continuous activity refreshes TTL, count stays
+        // bounded.
+        const HIST_TTL = 7 * 24 * 60 * 60 * 1000;
+        const HIST_MAX = 5;
+        for (let i = 1; i <= 8; i++) {
+          await adapter.appendToList(
+            `msg-history:telegram:42`,
+            { id: `h${i}`, text: `m${i}` },
+            { maxLength: HIST_MAX, ttlMs: HIST_TTL },
+          );
+        }
+        const history = await adapter.getList<{ id: string }>(`msg-history:telegram:42`);
+        expect(history.map((h) => h.id)).toEqual(["h4", "h5", "h6", "h7", "h8"]);
+      });
+    });
   });
 });

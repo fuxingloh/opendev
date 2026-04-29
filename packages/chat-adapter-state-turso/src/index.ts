@@ -66,6 +66,15 @@ export class TursoStateAdapter implements StateAdapter {
     return next;
   }
 
+  // SQLite uses a file-level write lock; two clients hitting the same DB
+  // race on every write. mnemonic/107 #2a + mnemonic/125 #2-#4 dropped the
+  // `serialize()` mutex (which was only needed for `client.transaction()`)
+  // but writes still need busy-retry across connections. Apply this around
+  // every `stmt.run()` / `stmt.get()` that mutates state.
+  private retry<T>(fn: () => Promise<T>): Promise<T> {
+    return withBusyRetry(fn);
+  }
+
   async connect(): Promise<void> {
     if (this.connected) return;
     if (!this.connectPromise) {
@@ -94,13 +103,13 @@ export class TursoStateAdapter implements StateAdapter {
       `INSERT INTO chat_state_subscriptions (key_prefix, thread_id)
        VALUES (?, ?) ON CONFLICT DO NOTHING`,
     );
-    await stmt.run([this.keyPrefix, threadId]);
+    await this.retry(() => stmt.run([this.keyPrefix, threadId]));
   }
 
   async unsubscribe(threadId: string): Promise<void> {
     this.ensureConnected();
     const stmt = await this.prepare(`DELETE FROM chat_state_subscriptions WHERE key_prefix = ? AND thread_id = ?`);
-    await stmt.run([this.keyPrefix, threadId]);
+    await this.retry(() => stmt.run([this.keyPrefix, threadId]));
   }
 
   async isSubscribed(threadId: string): Promise<boolean> {
@@ -133,7 +142,7 @@ export class TursoStateAdapter implements StateAdapter {
          WHERE chat_state_locks.expires_at <= excluded.updated_at
        RETURNING thread_id, token, expires_at`,
     );
-    const row = await stmt.get([this.keyPrefix, threadId, token, expiresAt, now]);
+    const row = await this.retry(() => stmt.get([this.keyPrefix, threadId, token, expiresAt, now]));
     if (!row) return null;
     return {
       threadId: row.thread_id as string,
@@ -145,7 +154,7 @@ export class TursoStateAdapter implements StateAdapter {
   async forceReleaseLock(threadId: string): Promise<void> {
     this.ensureConnected();
     const stmt = await this.prepare(`DELETE FROM chat_state_locks WHERE key_prefix = ? AND thread_id = ?`);
-    await stmt.run([this.keyPrefix, threadId]);
+    await this.retry(() => stmt.run([this.keyPrefix, threadId]));
   }
 
   async releaseLock(lock: Lock): Promise<void> {
@@ -154,7 +163,7 @@ export class TursoStateAdapter implements StateAdapter {
       `DELETE FROM chat_state_locks
        WHERE key_prefix = ? AND thread_id = ? AND token = ?`,
     );
-    await stmt.run([this.keyPrefix, lock.threadId, lock.token]);
+    await this.retry(() => stmt.run([this.keyPrefix, lock.threadId, lock.token]));
   }
 
   async extendLock(lock: Lock, ttlMs: number): Promise<boolean> {
@@ -166,7 +175,7 @@ export class TursoStateAdapter implements StateAdapter {
        WHERE key_prefix = ? AND thread_id = ? AND token = ? AND expires_at > ?
        RETURNING thread_id`,
     );
-    const row = await stmt.get([now + ttlMs, now, this.keyPrefix, lock.threadId, lock.token, now]);
+    const row = await this.retry(() => stmt.get([now + ttlMs, now, this.keyPrefix, lock.threadId, lock.token, now]));
     return row !== undefined && row !== null;
   }
 
@@ -199,7 +208,7 @@ export class TursoStateAdapter implements StateAdapter {
              expires_at = excluded.expires_at,
              updated_at = excluded.updated_at`,
     );
-    await stmt.run([this.keyPrefix, key, serialized, expiresAt, now]);
+    await this.retry(() => stmt.run([this.keyPrefix, key, serialized, expiresAt, now]));
   }
 
   async setIfNotExists(key: string, value: unknown, ttlMs?: number): Promise<boolean> {
@@ -226,14 +235,14 @@ export class TursoStateAdapter implements StateAdapter {
            AND chat_state_cache.expires_at <= excluded.updated_at
        RETURNING cache_key`,
     );
-    const row = await stmt.get([this.keyPrefix, key, JSON.stringify(value), expiresAt, now]);
+    const row = await this.retry(() => stmt.get([this.keyPrefix, key, JSON.stringify(value), expiresAt, now]));
     return row !== undefined && row !== null;
   }
 
   async delete(key: string): Promise<void> {
     this.ensureConnected();
     const stmt = await this.prepare(`DELETE FROM chat_state_cache WHERE key_prefix = ? AND cache_key = ?`);
-    await stmt.run([this.keyPrefix, key]);
+    await this.retry(() => stmt.run([this.keyPrefix, key]));
   }
 
   async appendToList(key: string, value: unknown, options?: { maxLength?: number; ttlMs?: number }): Promise<void> {
@@ -253,13 +262,13 @@ export class TursoStateAdapter implements StateAdapter {
       `INSERT INTO chat_state_lists (key_prefix, list_key, value, expires_at)
        VALUES (?, ?, ?, ?)`,
     );
-    await insert.run([this.keyPrefix, key, JSON.stringify(value), expiresAt]);
+    await this.retry(() => insert.run([this.keyPrefix, key, JSON.stringify(value), expiresAt]));
     if (expiresAt !== null) {
       const refreshTtl = await this.prepare(
         `UPDATE chat_state_lists SET expires_at = ?
          WHERE key_prefix = ? AND list_key = ?`,
       );
-      await refreshTtl.run([expiresAt, this.keyPrefix, key]);
+      await this.retry(() => refreshTtl.run([expiresAt, this.keyPrefix, key]));
     }
     if (options?.maxLength && options.maxLength > 0) {
       const trim = await this.prepare(
@@ -270,7 +279,7 @@ export class TursoStateAdapter implements StateAdapter {
            ORDER BY seq DESC LIMIT ?
          )`,
       );
-      await trim.run([this.keyPrefix, key, this.keyPrefix, key, options.maxLength]);
+      await this.retry(() => trim.run([this.keyPrefix, key, this.keyPrefix, key, options.maxLength]));
     }
   }
 
@@ -319,11 +328,11 @@ export class TursoStateAdapter implements StateAdapter {
        WHERE key_prefix = ? AND thread_id = ? AND expires_at > ?`,
     );
 
-    await insert.run([this.keyPrefix, threadId, JSON.stringify(entry), entry.expiresAt]);
+    await this.retry(() => insert.run([this.keyPrefix, threadId, JSON.stringify(entry), entry.expiresAt]));
     if (maxSize > 0) {
-      await trim.run([this.keyPrefix, threadId, this.keyPrefix, threadId, maxSize]);
+      await this.retry(() => trim.run([this.keyPrefix, threadId, this.keyPrefix, threadId, maxSize]));
     }
-    const row = await countStmt.get([this.keyPrefix, threadId, Date.now()]);
+    const row = await this.retry(() => countStmt.get([this.keyPrefix, threadId, Date.now()]));
     return toNumber(row?.depth);
   }
 
@@ -343,7 +352,7 @@ export class TursoStateAdapter implements StateAdapter {
        )
        RETURNING value`,
     );
-    const row = await stmt.get([this.keyPrefix, threadId, Date.now()]);
+    const row = await this.retry(() => stmt.get([this.keyPrefix, threadId, Date.now()]));
     if (!row) return null;
     return JSON.parse(row.value as string) as QueueEntry;
   }
