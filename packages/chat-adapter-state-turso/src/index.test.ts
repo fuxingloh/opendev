@@ -337,10 +337,34 @@ describe("TursoStateAdapter", () => {
         expect(await adapter.get<string>("key")).toBe("second");
       });
 
+      it("setIfNotExists respects TTL on the new value", async () => {
+        // chat-sdk conformance — ports `state-memory`'s test of the same
+        // name. The TTL passed to `setIfNotExists` must take effect.
+        expect(await adapter.setIfNotExists("key", "v", 5)).toBe(true);
+        await new Promise((r) => setTimeout(r, 15));
+        expect(await adapter.get("key")).toBeNull();
+      });
+
       it("delete removes a value", async () => {
         await adapter.set("key", "value");
         await adapter.delete("key");
         expect(await adapter.get("key")).toBeNull();
+      });
+
+      it("setIfNotExists serializes concurrent calls — exactly one winner", async () => {
+        // mnemonic/125 #2 dropped the transaction + serialize() mutex; the
+        // upsert-with-WHERE pattern is atomic per statement. Pin: three
+        // parallel calls on the same key produce 1 true + 2 false, and the
+        // value matches the winner.
+        const results = await Promise.all([
+          adapter.setIfNotExists("race", "A"),
+          adapter.setIfNotExists("race", "B"),
+          adapter.setIfNotExists("race", "C"),
+        ]);
+        const winners = results.filter((r) => r).length;
+        expect(winners).toBe(1);
+        const stored = await adapter.get<string>("race");
+        expect(["A", "B", "C"]).toContain(stored);
       });
     });
 
@@ -352,28 +376,50 @@ describe("TursoStateAdapter", () => {
         expect(await adapter.getList("mylist")).toEqual([{ id: 1 }, { id: 2 }, { id: 3 }]);
       });
 
-      it("appends without inline trimming (sweep + per-row TTL bound the size)", async () => {
-        // mnemonic/125 #8: appendToList no longer trims inline. `maxLength`
-        // is retained on the API for ABI compatibility but bound enforcement
-        // lives in `sweep()` + per-row `expires_at`. List grows monotonically
-        // until rows TTL out individually.
+      it("trims to maxLength, keeping newest", async () => {
+        // mnemonic/125 #8 (revised): inline trim is retained — `getList()`
+        // reads everything (no limit on the chat-sdk StateAdapter interface),
+        // so without trim, active threads accumulate rows for the whole TTL
+        // window and balloon transport size. refreshTtl was dropped
+        // (tested separately); trim stays. 5 RT → 2 RT.
         for (let i = 1; i <= 5; i++) {
           await adapter.appendToList("mylist", { id: i }, { maxLength: 3 });
         }
-        expect(await adapter.getList("mylist")).toEqual([{ id: 1 }, { id: 2 }, { id: 3 }, { id: 4 }, { id: 5 }]);
+        expect(await adapter.getList("mylist")).toEqual([{ id: 3 }, { id: 4 }, { id: 5 }]);
       });
 
-      it("each row TTLs out independently (no whole-list refresh on append)", async () => {
-        // Old contract refreshed every row's expires_at on each append, so
-        // continuous activity kept old entries alive forever. New contract:
-        // each row expires N ms after *its own* insert. For chat-sdk's
-        // rolling-history use case, this is the desired semantics.
+      it("expires the whole list when TTL passes", async () => {
         await adapter.appendToList("mylist", { id: 1 }, { ttlMs: 1 });
         await new Promise((r) => setTimeout(r, 10));
-        await adapter.appendToList("mylist", { id: 2 }, { ttlMs: 60_000 });
-        // First row is now expired and excluded by getList's filter; second
-        // is still live.
-        expect(await adapter.getList("mylist")).toEqual([{ id: 2 }]);
+        expect(await adapter.getList("mylist")).toEqual([]);
+      });
+
+      it("refreshes TTL on subsequent appends", async () => {
+        // chat-sdk conformance — ports `state-memory`'s test of the same
+        // name. The whole list shares one logical TTL: appending a fresh
+        // entry with TTL extends the lifetime of older entries too.
+        await adapter.appendToList("mylist", { id: 1 }, { ttlMs: 30 });
+        await new Promise((r) => setTimeout(r, 20));
+        await adapter.appendToList("mylist", { id: 2 }, { ttlMs: 30 });
+        // First entry would have expired at t=30 (no refresh), but the
+        // refresh on the second append pushes it to t≈50, so it survives.
+        expect(await adapter.getList("mylist")).toEqual([{ id: 1 }, { id: 2 }]);
+      });
+
+      it("isolates lists by key", async () => {
+        await adapter.appendToList("a", "alpha");
+        await adapter.appendToList("b", "beta");
+        expect(await adapter.getList("a")).toEqual(["alpha"]);
+        expect(await adapter.getList("b")).toEqual(["beta"]);
+      });
+
+      it("starts fresh after an expired list", async () => {
+        // chat-sdk conformance — appending to a list whose entries have all
+        // expired must yield only the new entry, not concatenate to dead rows.
+        await adapter.appendToList("L", { id: 1 }, { ttlMs: 1 });
+        await new Promise((r) => setTimeout(r, 10));
+        await adapter.appendToList("L", { id: 2 });
+        expect(await adapter.getList("L")).toEqual([{ id: 2 }]);
       });
 
       it("returns empty for unknown keys", async () => {
@@ -460,26 +506,43 @@ describe("TursoStateAdapter", () => {
         expect(d2).toBe(2);
       });
 
-      it("returns growing depth; trim is delegated to caller + sweep()", async () => {
-        // mnemonic/125 #4: enqueue no longer trims inline. chat-sdk gates the
-        // hard cap by checking `queueDepth()` *before* calling enqueue (with
-        // `onQueueFull: drop-newest`); long-term bound enforcement is sweep's
-        // job via `expires_at`. Pin: the adapter inserts every call, depth
-        // grows monotonically, FIFO order is preserved.
-        const depths: number[] = [];
+      it("trims to maxSize, keeping newest entries", async () => {
+        // chat-sdk conformance — ports `state-memory`'s test of the same
+        // name. Required for the `debounce` strategy (maxSize=1).
         for (let i = 1; i <= 5; i++) {
-          depths.push(await adapter.enqueue("t1", makeEntry(`m${i}`) as never, 3));
+          await adapter.enqueue("t1", makeEntry(`m${i}`) as never, 3);
         }
-        expect(depths).toEqual([1, 2, 3, 4, 5]);
-        expect(await adapter.queueDepth("t1")).toBe(5);
-
-        const entries: (string | undefined)[] = [];
+        expect(await adapter.queueDepth("t1")).toBe(3);
+        const entries: string[] = [];
         let next = await adapter.dequeue("t1");
         while (next) {
           entries.push(next.message.id as string);
           next = await adapter.dequeue("t1");
         }
-        expect(entries).toEqual(["m1", "m2", "m3", "m4", "m5"]);
+        expect(entries).toEqual(["m3", "m4", "m5"]);
+      });
+
+      it("handles maxSize of 1 (debounce behavior)", async () => {
+        // chat-sdk's `debounce` strategy enqueues every message with
+        // `maxSize: 1`, expecting the adapter to keep only the latest entry.
+        await adapter.enqueue("t1", makeEntry("m1") as never, 1);
+        await adapter.enqueue("t1", makeEntry("m2") as never, 1);
+        await adapter.enqueue("t1", makeEntry("m3") as never, 1);
+        expect(await adapter.queueDepth("t1")).toBe(1);
+        const only = await adapter.dequeue("t1");
+        expect(only?.message.id).toBe("m3");
+        expect(await adapter.dequeue("t1")).toBeNull();
+      });
+
+      it("returns null when dequeuing from a nonexistent thread", async () => {
+        expect(await adapter.dequeue("never-existed")).toBeNull();
+      });
+
+      it("isolates queues by thread", async () => {
+        await adapter.enqueue("t1", makeEntry("a") as never, 10);
+        await adapter.enqueue("t2", makeEntry("b") as never, 10);
+        expect((await adapter.dequeue("t1"))?.message.id).toBe("a");
+        expect((await adapter.dequeue("t2"))?.message.id).toBe("b");
       });
 
       it("drops expired entries", async () => {

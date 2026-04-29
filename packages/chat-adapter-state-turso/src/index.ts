@@ -238,23 +238,40 @@ export class TursoStateAdapter implements StateAdapter {
 
   async appendToList(key: string, value: unknown, options?: { maxLength?: number; ttlMs?: number }): Promise<void> {
     this.ensureConnected();
-    // mnemonic/125 #8: 5 RT → 1 RT. Drop the inline refreshTtl and trim:
-    //   - Per-row `expires_at` means each row TTLs out on its own. The
-    //     cross-row TTL refresh was nice-to-have ("any activity keeps the
-    //     whole list warm"), but for chat-sdk's history use case (rolling
-    //     N-message buffer) it's actively wrong — old messages should drop
-    //     off as they age, not stay forever because new ones keep landing.
-    //   - Trim to `maxLength` is now bounded by per-row TTL + `sweep()`.
-    //     `getList()` reads everything; if transport size becomes a problem
-    //     before sweep runs, add a `limit` parameter there instead.
-    // The `options.maxLength` arg is retained for ABI compatibility.
+    // mnemonic/125 #8 (revised): 5 RT → 3 RT. Drop the wrapping transaction
+    // + serialize() mutex; keep all three statements (insert + refreshTtl +
+    // trim) because state-memory's conformance suite asserts both:
+    //   - "should refresh TTL on subsequent appends" — old entries stay
+    //     alive when a new entry with TTL lands (whole-list TTL, not
+    //     per-row).
+    //   - "should trim to maxLength, keeping newest" — bounded list size.
+    // Both contracts are real chat-sdk dependencies (message history relies
+    // on cross-row TTL refresh; debounce on trim-to-maxSize-1). Optimizing
+    // them away breaks behavior, not just shaves RT.
     const expiresAt = options?.ttlMs ? Date.now() + options.ttlMs : null;
-    const stmt = await this.prepare(
+    const insert = await this.prepare(
       `INSERT INTO chat_state_lists (key_prefix, list_key, value, expires_at)
        VALUES (?, ?, ?, ?)`,
     );
-    await stmt.run([this.keyPrefix, key, JSON.stringify(value), expiresAt]);
-    void options?.maxLength;
+    await insert.run([this.keyPrefix, key, JSON.stringify(value), expiresAt]);
+    if (expiresAt !== null) {
+      const refreshTtl = await this.prepare(
+        `UPDATE chat_state_lists SET expires_at = ?
+         WHERE key_prefix = ? AND list_key = ?`,
+      );
+      await refreshTtl.run([expiresAt, this.keyPrefix, key]);
+    }
+    if (options?.maxLength && options.maxLength > 0) {
+      const trim = await this.prepare(
+        `DELETE FROM chat_state_lists
+         WHERE key_prefix = ? AND list_key = ? AND seq NOT IN (
+           SELECT seq FROM chat_state_lists
+           WHERE key_prefix = ? AND list_key = ?
+           ORDER BY seq DESC LIMIT ?
+         )`,
+      );
+      await trim.run([this.keyPrefix, key, this.keyPrefix, key, options.maxLength]);
+    }
   }
 
   async getList<T = unknown>(key: string): Promise<T[]> {
@@ -277,15 +294,25 @@ export class TursoStateAdapter implements StateAdapter {
 
   async enqueue(threadId: string, entry: QueueEntry, maxSize: number): Promise<number> {
     this.ensureConnected();
-    // mnemonic/125 #4: 6 RT → 2 RT. Drop the inline `purge` (expired rows
-    // linger until `sweep()`) and the inline `trim` (queue drift up to a few
-    // entries between sweeps is fine — chat-sdk uses depth as an advisory
-    // bound, not a hard limit, and `dequeue` filters by `expires_at`). What
-    // remains: insert + count. Two statements, no transaction, no mutex.
-    // `maxSize` is intentionally unused here now; sweep() enforces it later.
+    // mnemonic/125 #4 (revised): 6 RT → 3 RT. Drop the inline `purge` (sweep
+    // owns expired-row cleanup) and the wrapping transaction + serialize()
+    // mutex. `trim` stays — chat-sdk's `debounce` strategy enqueues with
+    // `maxSize: 1` and relies on the adapter to keep only the latest entry
+    // (state-memory contract). Insert + trim + count, three independent
+    // atomic statements. Concurrent enqueues from another instance interleave
+    // safely: trim is idempotent (no-op once inside the bound), count drift
+    // by ±1 on the wire is acceptable since chat-sdk treats depth as advisory.
     const insert = await this.prepare(
       `INSERT INTO chat_state_queues (key_prefix, thread_id, value, expires_at)
        VALUES (?, ?, ?, ?)`,
+    );
+    const trim = await this.prepare(
+      `DELETE FROM chat_state_queues
+       WHERE key_prefix = ? AND thread_id = ? AND seq NOT IN (
+         SELECT seq FROM chat_state_queues
+         WHERE key_prefix = ? AND thread_id = ?
+         ORDER BY seq DESC LIMIT ?
+       )`,
     );
     const countStmt = await this.prepare(
       `SELECT COUNT(*) AS depth FROM chat_state_queues
@@ -293,8 +320,10 @@ export class TursoStateAdapter implements StateAdapter {
     );
 
     await insert.run([this.keyPrefix, threadId, JSON.stringify(entry), entry.expiresAt]);
+    if (maxSize > 0) {
+      await trim.run([this.keyPrefix, threadId, this.keyPrefix, threadId, maxSize]);
+    }
     const row = await countStmt.get([this.keyPrefix, threadId, Date.now()]);
-    void maxSize;
     return toNumber(row?.depth);
   }
 
