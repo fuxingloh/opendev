@@ -125,6 +125,14 @@ export class TelegramChannel extends Channel<TelegramRaw> {
       const text = await collectTextDeltas(subStream);
       if (!text) continue;
 
+      // mnemonic/128: investigating `<null>` bubbles seen in Telegram. Log
+      // suspicious short outputs so we can confirm whether the model emitted
+      // the literal text or it's a round-trip artifact. Drop the log once the
+      // root cause is identified.
+      if (text.length < 32 || /^<\w+>$/.test(text.trim())) {
+        console.warn("[openxyz/telegram] mnemonic/128 — suspicious bubble text", { text, length: text.length });
+      }
+
       const ast = safeParseMarkdown(text);
       const segments = ast ? splitTablesFromAst(ast) : [{ kind: "md" as const, text }];
 
