@@ -34,14 +34,15 @@ export type OpenXyzRuntime = {
   drives: Record<string, Drive>;
   skills: SkillDef[];
   /**
-   * Template-level markdown artifacts injected into system prompts. Keyed by
-   * the exact filename — `AGENTS.md` / `SOUL.md` / `USER.md` today
-   * (mnemonic/039, OXYZ-54, mnemonic/121). `MEMORY.md` / `HEARTBEAT.md` are
-   * deferred. The map is open-ended (`Record<string, string>`) so new
-   * canonicals land without growing this type, but only the names hardcoded
-   * in `buildSystemPrompt` actually render — anything else is ignored.
+   * Template-level `AGENTS.md` body, injected into the system prompt under a
+   * `## AGENTS.md` heading. Optional. Prior multi-file shape (SOUL/USER/AGENTS
+   * per mnemonic/121) was collapsed to AGENTS-only on 2026-04-30 — the
+   * boundary between SOUL and AGENTS didn't carry its weight, and MEMORY /
+   * HEARTBEAT will likely land as drives, not as static prompt slots. The
+   * field is keyed by the literal filename so future canonicals slot in
+   * symmetrically (`"MEMORY.md"?: string`) without a translation step.
    */
-  mds?: Record<string, string>;
+  "AGENTS.md"?: string;
   /**
    * Teardown callbacks registered by the loader (MCP clients, stdio child
    * processes, etc.). `OpenXyz.stop()` invokes each with `Promise.allSettled`

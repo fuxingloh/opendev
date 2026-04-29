@@ -243,14 +243,8 @@ export class Agent {
     model: Model;
     tools: Record<string, Tool>;
     skills: SkillDef[];
-    /**
-     * Project-wide markdown files keyed by filename — `AGENTS.md` / `SOUL.md`
-     * / `USER.md` today (mnemonic/039, mnemonic/121). `MEMORY.md` /
-     * `HEARTBEAT.md` deferred. Passed through as the whole bag so Agent can
-     * opt into new entries without a factory change; only filenames
-     * hardcoded in `buildSystemPrompt` actually render.
-     */
-    mds?: Record<string, string>;
+    /** Template-level `AGENTS.md` body. See `OpenXyzRuntime["AGENTS.md"]`. */
+    "AGENTS.md"?: string;
   }) {
     this.name = config.def.name;
     this.#factory = config.factory;
@@ -281,7 +275,7 @@ export class Agent {
           tools: config.tools,
           skills: config.skills,
           def: config.def,
-          mds: config.mds,
+          "AGENTS.md": config["AGENTS.md"],
         }),
       },
       tools: config.tools,
@@ -553,21 +547,10 @@ export function safeBoundary(messages: ModelMessage[], start: number): number {
 }
 
 /**
- * Filenames rendered into the system prompt, in load order. SOUL first
- * (constitution), USER next (who's being talked to), AGENTS last
- * (operational rules can reference the persona + user context above them).
- * Anything else in `mds` is ignored. See mnemonic/121.
- *
- * Exported for testing — treat as internal.
- */
-export const SYSTEM_PROMPT_MD_FILES = ["SOUL.md", "USER.md", "AGENTS.md"] as const;
-
-/**
  * Materialize the full system-message content from the pieces a template
- * yields: the model-family baseline, project markdown files (SOUL → USER →
- * AGENTS, per mnemonic/039 + openclaw convention), per-agent body, and
- * structural metadata (skills index, filesystem env). Order matters for
- * prompt caching — stable prefix (model + project mds) leads so the cache
+ * yields: the model-family baseline, the template's `AGENTS.md` body, per-agent
+ * body, and structural metadata (skills index, filesystem env). Order matters
+ * for prompt caching — stable prefix (model + AGENTS.md) leads so the cache
  * key stays hot across agents sharing a model; per-agent sections trail.
  *
  * Exported for testing — treat as internal.
@@ -577,15 +560,13 @@ export function buildSystemPrompt(config: {
   tools: Record<string, Tool>;
   skills: SkillDef[];
   def: AgentDef;
-  mds?: Record<string, string>;
+  "AGENTS.md"?: string;
 }): string {
   const parts = [config.systemPrompt];
 
-  for (const filename of SYSTEM_PROMPT_MD_FILES) {
-    const body = config.mds?.[filename];
-    if (body && body.trim().length > 0) {
-      parts.push(`## ${filename}\n\n${body.trim()}`);
-    }
+  const agentsMd = config["AGENTS.md"];
+  if (agentsMd && agentsMd.trim().length > 0) {
+    parts.push(`## AGENTS.md\n\n${agentsMd.trim()}`);
   }
 
   // Skills index is only useful when the agent can actually load them — if

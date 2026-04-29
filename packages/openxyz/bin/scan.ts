@@ -21,22 +21,15 @@ export type OpenXyzFiles = {
     drives: Record<string, string>;
     skills: Record<string, string>;
     /**
-     * Top-level markdown injected into prompts. Keyed by the actual filename
-     * (`AGENTS.md`, `SOUL.md`, `USER.md`) — no translation, no aliases.
-     * Any other top-level `*.md` (except `README.md`) triggers a warning at
-     * scan time so users notice typos / unsupported files. See mnemonic/121.
+     * Path to top-level `AGENTS.md` if present, else undefined. Other top-level
+     * `*.md` files (except `README.md`) trigger a warn at scan time so users
+     * notice typos / unsupported files. See mnemonic/121 for prior multi-file
+     * shape (SOUL/USER/AGENTS) — collapsed to AGENTS-only on 2026-04-30.
      */
-    mds: Record<string, string>;
+    "AGENTS.md"?: string;
   };
   files: string[];
 };
-
-/**
- * Markdown files we lift out of the template root and inject into the system
- * prompt. Exact filename match — no aliases, no lowercase variants. Load
- * order lives in `buildSystemPrompt` (`agents/agent.ts`), not here.
- */
-const MD_FILES = ["SOUL.md", "USER.md", "AGENTS.md"] as const;
 
 export async function scanDir(cwd: string): Promise<OpenXyzFiles> {
   const [channels, tools, agents, models, drives, skills, files] = await Promise.all([
@@ -49,22 +42,25 @@ export async function scanDir(cwd: string): Promise<OpenXyzFiles> {
     scanFiles(cwd),
   ]);
 
-  // Sweep top-level `*.md`. Canonicals (`MD_FILES`) load. README.md is a
-  // template author's concern — skip silently, any case. Anything else
-  // gets a warning so users notice typos / unsupported files instead of
-  // wondering why their `Agents.md` or `notes.md` had no effect.
-  const supported = new Set<string>(MD_FILES);
-  const mds: Record<string, string> = {};
+  // Sweep top-level `*.md`. AGENTS.md loads. README.md is the template
+  // author's concern — skip silently, any case. Anything else gets a warning
+  // so users notice typos / unsupported files instead of wondering why their
+  // `Agents.md` or `notes.md` had no effect.
+  let agentsMdPath: string | undefined;
   for await (const entry of new Bun.Glob("*.md").scan({ cwd, onlyFiles: true })) {
-    if (supported.has(entry)) {
-      mds[entry] = entry;
+    if (entry === "AGENTS.md") {
+      agentsMdPath = entry;
       continue;
     }
     if (entry.toLowerCase() === "readme.md") continue;
-    console.warn(`[openxyz] "${entry}" not loaded — only ${MD_FILES.join(", ")} are injected into the system prompt`);
+    console.warn(`[openxyz] "${entry}" not loaded — only AGENTS.md is injected into the system prompt`);
   }
 
-  return { cwd, template: { channels, tools, agents, models, drives, skills, mds }, files };
+  return {
+    cwd,
+    template: { channels, tools, agents, models, drives, skills, "AGENTS.md": agentsMdPath },
+    files,
+  };
 }
 
 async function scanNamed(cwd: string, pattern: string, stripExt: RegExp): Promise<Record<string, string>> {

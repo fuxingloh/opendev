@@ -283,59 +283,27 @@ describe("buildSystemPrompt", () => {
     def: defOf("test"),
   };
 
-  test("emits no md sections when mds absent", () => {
+  test("emits no AGENTS.md section when agentsMd absent", () => {
     const out = buildSystemPrompt(baseConfig);
-    expect(out).not.toContain("## SOUL.md");
-    expect(out).not.toContain("## USER.md");
     expect(out).not.toContain("## AGENTS.md");
   });
 
-  test("renders SOUL → USER → AGENTS in order, each with filename heading", () => {
-    const out = buildSystemPrompt({
-      ...baseConfig,
-      mds: { "SOUL.md": "soul-body", "USER.md": "user-body", "AGENTS.md": "agents-body" },
-    });
-    const soulIdx = out.indexOf("## SOUL.md");
-    const userIdx = out.indexOf("## USER.md");
-    const agentsIdx = out.indexOf("## AGENTS.md");
-    expect(soulIdx).toBeGreaterThan(-1);
-    expect(userIdx).toBeGreaterThan(soulIdx);
-    expect(agentsIdx).toBeGreaterThan(userIdx);
-    expect(out).toContain("soul-body");
-    expect(out).toContain("user-body");
+  test("renders AGENTS.md body under filename heading when present", () => {
+    const out = buildSystemPrompt({ ...baseConfig, "AGENTS.md": "agents-body" });
+    expect(out).toContain("## AGENTS.md");
     expect(out).toContain("agents-body");
   });
 
-  test("only present md files render", () => {
-    const out = buildSystemPrompt({ ...baseConfig, mds: { "AGENTS.md": "ops" } });
-    expect(out).not.toContain("## SOUL.md");
-    expect(out).not.toContain("## USER.md");
-    expect(out).toContain("## AGENTS.md");
-    expect(out).toContain("ops");
+  test("whitespace-only agentsMd is skipped", () => {
+    const out = buildSystemPrompt({ ...baseConfig, "AGENTS.md": "   \n  " });
+    expect(out).not.toContain("## AGENTS.md");
   });
 
-  test("unknown md keys are ignored", () => {
-    const out = buildSystemPrompt({
-      ...baseConfig,
-      mds: { "USERS.md": "should-not-render", "MEMORY.md": "also-no" },
-    });
-    expect(out).not.toContain("## USERS.md");
-    expect(out).not.toContain("## MEMORY.md");
-    expect(out).not.toContain("should-not-render");
-    expect(out).not.toContain("also-no");
-  });
-
-  test("whitespace-only md body is skipped", () => {
-    const out = buildSystemPrompt({ ...baseConfig, mds: { "SOUL.md": "   \n  ", "AGENTS.md": "real content" } });
-    expect(out).not.toContain("## SOUL.md");
-    expect(out).toContain("## AGENTS.md");
-  });
-
-  test("base systemPrompt leads, mds sections follow", () => {
+  test("base systemPrompt leads, AGENTS.md section follows", () => {
     const out = buildSystemPrompt({
       ...baseConfig,
       systemPrompt: "BASELINE_MARKER",
-      mds: { "AGENTS.md": "agents-body" },
+      "AGENTS.md": "agents-body",
     });
     expect(out.indexOf("BASELINE_MARKER")).toBeLessThan(out.indexOf("## AGENTS.md"));
   });

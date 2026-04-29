@@ -98,7 +98,7 @@ export class AgentFactory {
       model,
       tools,
       skills,
-      mds: this.#runtime.mds,
+      "AGENTS.md": this.#runtime["AGENTS.md"],
     });
   }
 

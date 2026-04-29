@@ -116,12 +116,11 @@ export async function generateEntrypoint(
     skillEntries.push(`  ${JSON.stringify(info)},`);
   }
 
-  const mdIds: Record<string, string> = {};
-  Object.entries(t.mds).forEach(([slot, rel], i) => {
-    const id = `__md${i}`;
-    imports.push(`import ${id} from ${JSON.stringify(toRel(abs(rel)))} with { type: "text" };`);
-    mdIds[slot] = id;
-  });
+  let agentsMdId: string | undefined;
+  if (t["AGENTS.md"]) {
+    agentsMdId = "__agentsMd";
+    imports.push(`import ${agentsMdId} from ${JSON.stringify(toRel(abs(t["AGENTS.md"])))} with { type: "text" };`);
+  }
 
   // Expand every tools/*.ts module at boot — MCP servers connect here, named
   // tool() exports get flattened into `<filename>_<export>` ids. Must NOT run
@@ -152,8 +151,7 @@ export async function generateEntrypoint(
   body.push(modelEntries.length > 0 ? `  models: {\n${modelEntries.join("\n")}\n  },` : `  models: {},`);
   body.push(skillEntries.length > 0 ? `  skills: [\n${skillEntries.join("\n")}\n  ],` : `  skills: [],`);
   body.push(`  drives: {\n${driveEntries.join("\n")}\n  },`);
-  const mdEntries = Object.entries(mdIds).map(([slot, id]) => `    ${JSON.stringify(slot)}: ${id},`);
-  if (mdEntries.length > 0) body.push(`  mds: {\n${mdEntries.join("\n")}\n  },`);
+  if (agentsMdId) body.push(`  "AGENTS.md": ${agentsMdId},`);
   body.push(`});`);
   // Serverless entrypoint: the function can be suspended between invocations,
   // so we don't wire a shutdown hook — the Turso client's `close()` only
