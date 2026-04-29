@@ -28,9 +28,9 @@ The reference template is `templates/openxyz-janitor` — the team's own chief-o
 
 ## Reference source (read these when the question touches them)
 
-- `../ai` — the `ai` SDK monorepo we depend on. Source for `ToolLoopAgent`, `wrapLanguageModel`, `convertToLanguageModelPrompt`, `streamText`, middleware spec, per-provider packages (`../ai/packages/{ai,anthropic,amazon-bedrock,openai,openai-compatible,gateway,...}`). Go here when you need exact types, marker shapes, or call semantics.
-- `../chat` — the chat-sdk monorepo. Source for `Chat`, `Thread`, `Adapter`, `toAiMessages`, `@chat-adapter/*`. Go here for dispatch tiering, thread lifecycle, webhook decoding, state adapter contracts.
-- Full reference checkouts table lives in `./mnemonic/000-AGENTS.md`.
+- `../../@opensource/vercel/ai` — the `ai` SDK monorepo we depend on. Source for `ToolLoopAgent`, `wrapLanguageModel`, `convertToLanguageModelPrompt`, `streamText`, middleware spec, per-provider packages (`../../@opensource/vercel/ai/packages/{ai,anthropic,amazon-bedrock,openai,openai-compatible,gateway,...}`). Go here when you need exact types, marker shapes, or call semantics.
+- `../../@opensource/vercel/chat` — the chat-sdk monorepo. Source for `Chat`, `Thread`, `Adapter`, `toAiMessages`, `@chat-adapter/*`. Go here for dispatch tiering, thread lifecycle, webhook decoding, state adapter contracts.
+- Full reference checkouts table lives in `./mnemonic/000-AGENTS.md`. Layout convention (shallow main-only clones, freshness check) in `./mnemonic/124`.
 
 ## Tech direction
 
