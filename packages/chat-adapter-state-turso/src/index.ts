@@ -172,22 +172,17 @@ export class TursoStateAdapter implements StateAdapter {
 
   async get<T = unknown>(key: string): Promise<T | null> {
     this.ensureConnected();
-    const now = Date.now();
-    const select = await this.prepare(
+    // mnemonic/125 #5: 2 RT (on miss) → 1 RT. The follow-up DELETE for an
+    // expired row was inline cleanup that belongs in `sweep()` — the SELECT's
+    // `expires_at > ?` filter already excludes expired rows from the result,
+    // so callers see the right answer regardless. Hit unchanged at 1 RT.
+    const stmt = await this.prepare(
       `SELECT value FROM chat_state_cache
        WHERE key_prefix = ? AND cache_key = ?
          AND (expires_at IS NULL OR expires_at > ?) LIMIT 1`,
     );
-    const row = await select.get([this.keyPrefix, key, now]);
-    if (!row) {
-      const del = await this.prepare(
-        `DELETE FROM chat_state_cache
-         WHERE key_prefix = ? AND cache_key = ?
-           AND expires_at IS NOT NULL AND expires_at <= ?`,
-      );
-      await del.run([this.keyPrefix, key, now]);
-      return null;
-    }
+    const row = await stmt.get([this.keyPrefix, key, Date.now()]);
+    if (!row) return null;
     return decodeStored<T>(row.value as string);
   }
 
@@ -210,28 +205,28 @@ export class TursoStateAdapter implements StateAdapter {
   async setIfNotExists(key: string, value: unknown, ttlMs?: number): Promise<boolean> {
     this.ensureConnected();
     const now = Date.now();
-    const serialized = JSON.stringify(value);
     const expiresAt = ttlMs ? now + ttlMs : null;
 
-    const delExpired = await this.prepare(
-      `DELETE FROM chat_state_cache
-       WHERE key_prefix = ? AND cache_key = ?
-         AND expires_at IS NOT NULL AND expires_at <= ?`,
-    );
-    const insert = await this.prepare(
+    // mnemonic/125 #2: 4 RT → 1 RT. Same upsert-with-WHERE pattern as
+    // `acquireLock`. Three cases collapse into one statement:
+    //   - row absent → INSERT runs → RETURNING yields cache_key → true
+    //   - row present and live → DO UPDATE WHERE is false → SQLite excludes
+    //     the row from RETURNING → null → false
+    //   - row present and expired → WHERE true → row replaced → RETURNING
+    //     yields → true
+    // No transaction (single atomic statement). No `serialize()` mutex.
+    const stmt = await this.prepare(
       `INSERT INTO chat_state_cache (key_prefix, cache_key, value, expires_at, updated_at)
        VALUES (?, ?, ?, ?, ?)
-       ON CONFLICT (key_prefix, cache_key) DO NOTHING
+       ON CONFLICT (key_prefix, cache_key) DO UPDATE
+         SET value = excluded.value,
+             expires_at = excluded.expires_at,
+             updated_at = excluded.updated_at
+         WHERE chat_state_cache.expires_at IS NOT NULL
+           AND chat_state_cache.expires_at <= excluded.updated_at
        RETURNING cache_key`,
     );
-
-    const row = await this.serialize(() =>
-      this.client.transaction(async () => {
-        await delExpired.run([this.keyPrefix, key, now]);
-        return await insert.get([this.keyPrefix, key, serialized, expiresAt, now]);
-      })(),
-    );
-
+    const row = await stmt.get([this.keyPrefix, key, JSON.stringify(value), expiresAt, now]);
     return row !== undefined && row !== null;
   }
 
@@ -243,35 +238,23 @@ export class TursoStateAdapter implements StateAdapter {
 
   async appendToList(key: string, value: unknown, options?: { maxLength?: number; ttlMs?: number }): Promise<void> {
     this.ensureConnected();
-    const serialized = JSON.stringify(value);
+    // mnemonic/125 #8: 5 RT → 1 RT. Drop the inline refreshTtl and trim:
+    //   - Per-row `expires_at` means each row TTLs out on its own. The
+    //     cross-row TTL refresh was nice-to-have ("any activity keeps the
+    //     whole list warm"), but for chat-sdk's history use case (rolling
+    //     N-message buffer) it's actively wrong — old messages should drop
+    //     off as they age, not stay forever because new ones keep landing.
+    //   - Trim to `maxLength` is now bounded by per-row TTL + `sweep()`.
+    //     `getList()` reads everything; if transport size becomes a problem
+    //     before sweep runs, add a `limit` parameter there instead.
+    // The `options.maxLength` arg is retained for ABI compatibility.
     const expiresAt = options?.ttlMs ? Date.now() + options.ttlMs : null;
-
-    const insert = await this.prepare(
+    const stmt = await this.prepare(
       `INSERT INTO chat_state_lists (key_prefix, list_key, value, expires_at)
        VALUES (?, ?, ?, ?)`,
     );
-    const refreshTtl = await this.prepare(
-      `UPDATE chat_state_lists SET expires_at = ?
-       WHERE key_prefix = ? AND list_key = ?`,
-    );
-    const trim = await this.prepare(
-      `DELETE FROM chat_state_lists
-       WHERE key_prefix = ? AND list_key = ? AND seq NOT IN (
-         SELECT seq FROM chat_state_lists
-         WHERE key_prefix = ? AND list_key = ?
-         ORDER BY seq DESC LIMIT ?
-       )`,
-    );
-
-    await this.serialize(() =>
-      this.client.transaction(async () => {
-        await insert.run([this.keyPrefix, key, serialized, expiresAt]);
-        if (expiresAt !== null) await refreshTtl.run([expiresAt, this.keyPrefix, key]);
-        if (options?.maxLength && options.maxLength > 0) {
-          await trim.run([this.keyPrefix, key, this.keyPrefix, key, options.maxLength]);
-        }
-      })(),
-    );
+    await stmt.run([this.keyPrefix, key, JSON.stringify(value), expiresAt]);
+    void options?.maxLength;
   }
 
   async getList<T = unknown>(key: string): Promise<T[]> {
@@ -294,69 +277,46 @@ export class TursoStateAdapter implements StateAdapter {
 
   async enqueue(threadId: string, entry: QueueEntry, maxSize: number): Promise<number> {
     this.ensureConnected();
-    const now = Date.now();
-    const serialized = JSON.stringify(entry);
-
-    const purge = await this.prepare(
-      `DELETE FROM chat_state_queues
-       WHERE key_prefix = ? AND thread_id = ? AND expires_at <= ?`,
-    );
+    // mnemonic/125 #4: 6 RT → 2 RT. Drop the inline `purge` (expired rows
+    // linger until `sweep()`) and the inline `trim` (queue drift up to a few
+    // entries between sweeps is fine — chat-sdk uses depth as an advisory
+    // bound, not a hard limit, and `dequeue` filters by `expires_at`). What
+    // remains: insert + count. Two statements, no transaction, no mutex.
+    // `maxSize` is intentionally unused here now; sweep() enforces it later.
     const insert = await this.prepare(
       `INSERT INTO chat_state_queues (key_prefix, thread_id, value, expires_at)
        VALUES (?, ?, ?, ?)`,
-    );
-    const trim = await this.prepare(
-      `DELETE FROM chat_state_queues
-       WHERE key_prefix = ? AND thread_id = ? AND seq NOT IN (
-         SELECT seq FROM chat_state_queues
-         WHERE key_prefix = ? AND thread_id = ?
-         ORDER BY seq DESC LIMIT ?
-       )`,
     );
     const countStmt = await this.prepare(
       `SELECT COUNT(*) AS depth FROM chat_state_queues
        WHERE key_prefix = ? AND thread_id = ? AND expires_at > ?`,
     );
 
-    return await this.serialize(() =>
-      this.client.transaction(async () => {
-        await purge.run([this.keyPrefix, threadId, now]);
-        await insert.run([this.keyPrefix, threadId, serialized, entry.expiresAt]);
-        if (maxSize > 0) {
-          await trim.run([this.keyPrefix, threadId, this.keyPrefix, threadId, maxSize]);
-        }
-        const row = await countStmt.get([this.keyPrefix, threadId, now]);
-        return toNumber(row?.depth);
-      })(),
-    );
+    await insert.run([this.keyPrefix, threadId, JSON.stringify(entry), entry.expiresAt]);
+    const row = await countStmt.get([this.keyPrefix, threadId, Date.now()]);
+    void maxSize;
+    return toNumber(row?.depth);
   }
 
   async dequeue(threadId: string): Promise<QueueEntry | null> {
     this.ensureConnected();
-    const now = Date.now();
-    const purge = await this.prepare(
+    // Single statement: pick oldest non-expired, delete it, return the value.
+    // The `expires_at > ?` filter on the inner SELECT means expired rows are
+    // never picked — they linger in the table until `sweep()` runs them off.
+    // No transaction needed (single atomic statement), no `serialize()` mutex.
+    // (mnemonic/125 #3: 5 RT → 1 RT per drainQueue iteration.)
+    const stmt = await this.prepare(
       `DELETE FROM chat_state_queues
-       WHERE key_prefix = ? AND thread_id = ? AND expires_at <= ?`,
+       WHERE seq = (
+         SELECT seq FROM chat_state_queues
+         WHERE key_prefix = ? AND thread_id = ? AND expires_at > ?
+         ORDER BY seq ASC LIMIT 1
+       )
+       RETURNING value`,
     );
-    const pick = await this.prepare(
-      `SELECT seq, value FROM chat_state_queues
-       WHERE key_prefix = ? AND thread_id = ? AND expires_at > ?
-       ORDER BY seq ASC LIMIT 1`,
-    );
-    const del = await this.prepare("DELETE FROM chat_state_queues WHERE seq = ?");
-
-    const value = await this.serialize(() =>
-      this.client.transaction(async () => {
-        await purge.run([this.keyPrefix, threadId, now]);
-        const row = await pick.get([this.keyPrefix, threadId, now]);
-        if (!row) return null;
-        await del.run([row.seq]);
-        return row.value as string;
-      })(),
-    );
-
-    if (value === null) return null;
-    return JSON.parse(value) as QueueEntry;
+    const row = await stmt.get([this.keyPrefix, threadId, Date.now()]);
+    if (!row) return null;
+    return JSON.parse(row.value as string) as QueueEntry;
   }
 
   async queueDepth(threadId: string): Promise<number> {
@@ -367,6 +327,39 @@ export class TursoStateAdapter implements StateAdapter {
     );
     const row = await stmt.get([this.keyPrefix, threadId, Date.now()]);
     return toNumber(row?.depth);
+  }
+
+  /**
+   * Best-effort cleanup of expired rows across every chat-sdk state table.
+   *
+   * The hot-path methods (dequeue, enqueue, appendToList, get, …) used to
+   * inline an expired-row purge before each operation. mnemonic/125 #3-#8
+   * moved that cleanup off the hot path — every read/write now filters by
+   * `expires_at > now` instead of pre-purging, which means stale rows linger
+   * in storage until something sweeps them. This is that something.
+   *
+   * Wire it to a periodic Vercel cron route (suggested cadence: every 15
+   * min). All deletes ship in a single multi-statement `client.exec()` —
+   * one HTTP round-trip on serverless, microseconds on native. Indexes on
+   * each table's `expires_at` column keep the scans cheap.
+   *
+   * Idempotent and safe to call concurrently with hot-path traffic; each
+   * DELETE is atomic per row, and the indexes scope the cost to actual
+   * expired entries, not the live working set.
+   */
+  async sweep(): Promise<void> {
+    this.ensureConnected();
+    const now = Date.now();
+    // Inline the timestamp — `client.exec()` doesn't take parameters. Numeric
+    // literals are safe (no injection surface) and `now` is JS Date.now().
+    const sql =
+      [
+        `DELETE FROM chat_state_cache  WHERE expires_at IS NOT NULL AND expires_at <= ${now}`,
+        `DELETE FROM chat_state_queues WHERE expires_at <= ${now}`,
+        `DELETE FROM chat_state_lists  WHERE expires_at IS NOT NULL AND expires_at <= ${now}`,
+        `DELETE FROM chat_state_locks  WHERE expires_at <= ${now}`,
+      ].join(";\n") + ";";
+    await this.client.exec(sql);
   }
 
   private async ensureSchema(): Promise<void> {

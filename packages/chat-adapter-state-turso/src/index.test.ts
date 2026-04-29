@@ -352,17 +352,28 @@ describe("TursoStateAdapter", () => {
         expect(await adapter.getList("mylist")).toEqual([{ id: 1 }, { id: 2 }, { id: 3 }]);
       });
 
-      it("trims to maxLength, keeping newest", async () => {
+      it("appends without inline trimming (sweep + per-row TTL bound the size)", async () => {
+        // mnemonic/125 #8: appendToList no longer trims inline. `maxLength`
+        // is retained on the API for ABI compatibility but bound enforcement
+        // lives in `sweep()` + per-row `expires_at`. List grows monotonically
+        // until rows TTL out individually.
         for (let i = 1; i <= 5; i++) {
           await adapter.appendToList("mylist", { id: i }, { maxLength: 3 });
         }
-        expect(await adapter.getList("mylist")).toEqual([{ id: 3 }, { id: 4 }, { id: 5 }]);
+        expect(await adapter.getList("mylist")).toEqual([{ id: 1 }, { id: 2 }, { id: 3 }, { id: 4 }, { id: 5 }]);
       });
 
-      it("expires the whole list when TTL passes", async () => {
+      it("each row TTLs out independently (no whole-list refresh on append)", async () => {
+        // Old contract refreshed every row's expires_at on each append, so
+        // continuous activity kept old entries alive forever. New contract:
+        // each row expires N ms after *its own* insert. For chat-sdk's
+        // rolling-history use case, this is the desired semantics.
         await adapter.appendToList("mylist", { id: 1 }, { ttlMs: 1 });
         await new Promise((r) => setTimeout(r, 10));
-        expect(await adapter.getList("mylist")).toEqual([]);
+        await adapter.appendToList("mylist", { id: 2 }, { ttlMs: 60_000 });
+        // First row is now expired and excluded by getList's filter; second
+        // is still live.
+        expect(await adapter.getList("mylist")).toEqual([{ id: 2 }]);
       });
 
       it("returns empty for unknown keys", async () => {
@@ -449,18 +460,26 @@ describe("TursoStateAdapter", () => {
         expect(d2).toBe(2);
       });
 
-      it("trims to maxSize, keeping newest entries", async () => {
+      it("returns growing depth; trim is delegated to caller + sweep()", async () => {
+        // mnemonic/125 #4: enqueue no longer trims inline. chat-sdk gates the
+        // hard cap by checking `queueDepth()` *before* calling enqueue (with
+        // `onQueueFull: drop-newest`); long-term bound enforcement is sweep's
+        // job via `expires_at`. Pin: the adapter inserts every call, depth
+        // grows monotonically, FIFO order is preserved.
+        const depths: number[] = [];
         for (let i = 1; i <= 5; i++) {
-          await adapter.enqueue("t1", makeEntry(`m${i}`) as never, 3);
+          depths.push(await adapter.enqueue("t1", makeEntry(`m${i}`) as never, 3));
         }
-        expect(await adapter.queueDepth("t1")).toBe(3);
+        expect(depths).toEqual([1, 2, 3, 4, 5]);
+        expect(await adapter.queueDepth("t1")).toBe(5);
+
         const entries: (string | undefined)[] = [];
         let next = await adapter.dequeue("t1");
         while (next) {
           entries.push(next.message.id as string);
           next = await adapter.dequeue("t1");
         }
-        expect(entries).toEqual(["m3", "m4", "m5"]);
+        expect(entries).toEqual(["m1", "m2", "m3", "m4", "m5"]);
       });
 
       it("drops expired entries", async () => {
@@ -473,6 +492,78 @@ describe("TursoStateAdapter", () => {
 
       it("queueDepth returns 0 for empty queues", async () => {
         expect(await adapter.queueDepth("nobody")).toBe(0);
+      });
+
+      it("dequeue skips expired rows without deleting them — sweep owns cleanup", async () => {
+        // mnemonic/125 #3: dequeue dropped the inline expired-purge. The
+        // SELECT filter excludes expired rows from being picked, but they
+        // remain in storage until `sweep()` runs. This pins that contract —
+        // if a future change re-introduces inline cleanup, it'll fail loudly.
+        // (Note: `enqueue` still purges inline today; until mnemonic/125 #4
+        // lands, we have to insert the expired row directly to test this.)
+        const insertExpired = db.prepare(
+          `INSERT INTO chat_state_queues (key_prefix, thread_id, value, expires_at)
+           VALUES (?, ?, ?, ?)`,
+        );
+        await insertExpired.run([
+          "chat-sdk",
+          "t1",
+          JSON.stringify({ message: { id: "expired" }, enqueuedAt: 0, expiresAt: 1 }),
+          1,
+        ]);
+
+        // Dequeue against an only-expired queue → returns null, row untouched.
+        const empty = await adapter.dequeue("t1");
+        expect(empty).toBeNull();
+
+        const stmt = db.prepare("SELECT COUNT(*) AS c FROM chat_state_queues WHERE key_prefix = ? AND thread_id = ?");
+        const row = await stmt.get(["chat-sdk", "t1"]);
+        expect(Number(row.c)).toBe(1);
+      });
+    });
+
+    describe("sweep", () => {
+      it("removes expired rows from every state table", async () => {
+        const past = Date.now() - 1000;
+        const future = Date.now() + 60_000;
+
+        await adapter.set("live", "v", 60_000);
+        await adapter.set("dead", "v", 1);
+        await new Promise((r) => setTimeout(r, 10));
+
+        // Fresh + expired in queues + lists.
+        await adapter.enqueue(
+          "t1",
+          { message: { id: "fresh" }, enqueuedAt: Date.now(), expiresAt: future } as never,
+          10,
+        );
+        await adapter.enqueue("t1", { message: { id: "stale" }, enqueuedAt: Date.now(), expiresAt: past } as never, 10);
+        await adapter.appendToList("L", "live", { ttlMs: 60_000 });
+
+        await adapter.sweep();
+
+        // Live entries remain.
+        expect(await adapter.get("live")).toBe("v");
+        expect(await adapter.queueDepth("t1")).toBe(1);
+        expect(await adapter.getList("L")).toEqual(["live"]);
+
+        // Dead cache key is gone — direct table check, not via get() (which
+        // also filters by expiry, masking the sweep's effect).
+        const cnt = db.prepare("SELECT COUNT(*) AS c FROM chat_state_cache WHERE key_prefix = ? AND cache_key = ?");
+        const cacheRow = await cnt.get(["chat-sdk", "dead"]);
+        expect(Number(cacheRow.c)).toBe(0);
+
+        // Stale queue row gone too.
+        const qcnt = db.prepare("SELECT COUNT(*) AS c FROM chat_state_queues WHERE key_prefix = ? AND thread_id = ?");
+        const qRow = await qcnt.get(["chat-sdk", "t1"]);
+        expect(Number(qRow.c)).toBe(1);
+      });
+
+      it("is idempotent and safe to call when nothing is expired", async () => {
+        await adapter.set("k", "v", 60_000);
+        await adapter.sweep();
+        await adapter.sweep();
+        expect(await adapter.get("k")).toBe("v");
       });
     });
   });
