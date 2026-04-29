@@ -144,6 +144,35 @@ describe("TursoStateAdapter", () => {
         await adapter.connect();
       });
 
+      it("uses client.batch() for schema when available", async () => {
+        // Serverless `Connection` exposes `batch(string[])` — one HTTP RT for
+        // all schema statements. Native `Database` doesn't, so we wrap the
+        // real db and assert the adapter prefers batch.
+        const { db: d, cleanup } = await makeTmpDb();
+        try {
+          const batch = mock(async (statements: string[]) => {
+            for (const sql of statements) await d.exec(sql);
+          });
+          const adapterExec = mock();
+          const wrapped = new Proxy(d, {
+            get(target, prop, receiver) {
+              if (prop === "batch") return batch;
+              if (prop === "exec") return adapterExec;
+              return Reflect.get(target, prop, receiver);
+            },
+          });
+          const a = new TursoStateAdapter({ client: wrapped as never, logger: mockLogger });
+          await a.connect();
+          expect(batch).toHaveBeenCalledTimes(1);
+          expect(batch.mock.calls[0]?.[0]?.length).toBeGreaterThan(1);
+          // ensureSchema must not fall back to per-statement exec when batch exists
+          expect(adapterExec).not.toHaveBeenCalled();
+          await a.disconnect();
+        } finally {
+          await cleanup();
+        }
+      });
+
       it("handles connect failure and allows retry", async () => {
         const { db: broken, cleanup } = await makeTmpDb();
         try {

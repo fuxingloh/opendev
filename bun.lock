@@ -107,7 +107,7 @@
       "dependencies": {
         "@chat-adapter/state-turso": "workspace:*",
         "@tursodatabase/database": "^0.5.3",
-        "@tursodatabase/serverless": "^1.1.0",
+        "@tursodatabase/serverless": "^1.1.2",
         "chat": "catalog:",
         "just-bash": "^2",
         "turndown": "^7.2.4",
@@ -318,7 +318,7 @@
 
     "@tursodatabase/database-win32-x64-msvc": ["@tursodatabase/database-win32-x64-msvc@0.5.3", "", { "os": "win32", "cpu": "x64" }, "sha512-Blyt6fvmmbiPxO/HNRzmDjyvVqmBpD7hTjV77t+QNCMdI6aNqFN9x5MEjNMelxHon0RXXesXK92jMWJyTvqUPQ=="],
 
-    "@tursodatabase/serverless": ["@tursodatabase/serverless@1.1.0", "", {}, "sha512-A3YfAmXX5n3BLrND8k2p8UIu7NKOsszUkevjACUOEFAi3TD0nq7eTi3bEJcet2LUY5uBN/eKabxZUm637DBapQ=="],
+    "@tursodatabase/serverless": ["@tursodatabase/serverless@1.1.2", "", {}, "sha512-4nN4a0diq4rurNJ/JZypfWJugzZtZeydxxOzzJinSZjyOg+YBt9xtBqPsILfFDMiWRBKSHLH+7WLL6tV64nm4Q=="],
 
     "@types/bun": ["@types/bun@1.3.12", "", { "dependencies": { "bun-types": "1.3.12" } }, "sha512-DBv81elK+/VSwXHDlnH3Qduw+KxkTIWi7TXkAeh24zpi5l0B2kUg9Ga3tb4nJaPcOFswflgi/yAvMVBPrxMB+A=="],
 
