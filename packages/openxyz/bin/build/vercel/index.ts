@@ -1,6 +1,6 @@
 import { existsSync, mkdirSync, rmSync, cpSync } from "node:fs";
 import { resolve, relative, join } from "node:path";
-import { parseAgent } from "@openxyz/runtime/agents/parser";
+import { parseAgent } from "../../parsers/agent";
 import { scanDir, type OpenXyzFiles } from "../../scan";
 import { generateEntrypoint } from "./entrypoint";
 import { virtualRuntimePlugin } from "./plugins/virtual-runtime";

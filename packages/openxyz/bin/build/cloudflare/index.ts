@@ -1,6 +1,6 @@
 import { mkdirSync, rmSync } from "node:fs";
 import { resolve, relative, join, basename } from "node:path";
-import { parseAgent } from "@openxyz/runtime/agents/parser";
+import { parseAgent } from "../../parsers/agent";
 import { scanDir, type OpenXyzFiles } from "../../scan";
 import { generateEntrypoint } from "./entrypoint";
 import { generateWranglerJsonc } from "./wrangler";

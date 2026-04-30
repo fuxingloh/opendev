@@ -26,6 +26,7 @@
     "chat": "catalog:",
     "chat-state-cloudflare-do": "^0.2.0",
     "commander": "^14.0.3",
+    "yaml": "^2.8.1",
     "zod": "^4"
   },
   "devDependencies": {

@@ -12,6 +12,11 @@ import { parse as parseYaml } from "yaml";
  * tries to write to a read-only disk on Vercel and crashes the function
  * at module-load. `yaml` is pure ESM with no transitive deps. See
  * `mnemonic/068` for the full story.
+ *
+ * Parsers live in the CLI (where parsing happens) rather than the runtime —
+ * the deployed worker only ever sees pre-parsed JSON literals codegened by
+ * `openxyz build`. Keeping yaml out of the runtime bundle is the
+ * load-bearing reason this file is here and not in `@openxyz/runtime`.
  */
 export function matter(raw: string): { data: Record<string, unknown>; content: string } {
   const match = raw.match(/^---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)([\s\S]*)$/);

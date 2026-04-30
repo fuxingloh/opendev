@@ -1,17 +1,35 @@
 import { tool } from "ai";
 import type { Tool } from "ai";
 import { z } from "zod";
-import { createSkillTool } from "../tools/skill";
-import type { SkillDef } from "../tools/skill-parser";
-import { FilesystemTools } from "../tools/filesystem";
+import { createSkillTool, type SkillDef } from "../tools/skill";
+import { FilesystemTools, FilesystemConfigSchema } from "../tools/filesystem";
 import { web_fetch, web_search } from "../tools/web";
 import type { OpenXyzRuntime } from "../openxyz";
 import { Agent } from "./agent";
-// Type-only re-export — `parser.ts` pulls in yaml; importing the type is
-// erased at compile time so the runtime bundle stays yaml-free.
-// Build-time codegen + tests import { parseAgent } from "./parser" directly.
-export type { AgentDef } from "./parser";
-import type { AgentDef } from "./parser";
+
+/**
+ * Schemas + types live here so the runtime owns its own shape. The actual
+ * parsing — `matter()`, yaml, frontmatter handling — lives in the CLI
+ * (`packages/openxyz/bin/parsers/agent.ts`) because it's a build-time
+ * concern. The deployed runtime bundle never imports yaml.
+ */
+export const AgentFrontmatterSchema = z.object({
+  name: z.string(),
+  description: z.string(),
+  skills: z.array(z.string()).optional(),
+  tools: z
+    .record(z.string(), z.union([z.literal(true), z.literal(false), z.record(z.string(), z.unknown())]))
+    .default({ "*": true }),
+  filesystem: FilesystemConfigSchema,
+  /** Name from the models. Falls back to "auto" when omitted. */
+  model: z.string().default("auto"),
+});
+
+export const AgentDefSchema = AgentFrontmatterSchema.extend({
+  instructions: z.string(),
+});
+
+export type AgentDef = z.infer<typeof AgentDefSchema>;
 
 function formatAgentList(defs: Record<string, AgentDef>): string {
   return Object.values(defs)

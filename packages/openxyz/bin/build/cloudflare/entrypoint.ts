@@ -1,6 +1,6 @@
 import { join, relative } from "node:path";
-import { parseAgent } from "@openxyz/runtime/agents/parser";
-import { parseSkill } from "@openxyz/runtime/tools/skill-parser";
+import { parseAgent } from "../../parsers/agent";
+import { parseSkill } from "../../parsers/skill";
 import type { OpenXyzFiles } from "../../scan";
 
 /**

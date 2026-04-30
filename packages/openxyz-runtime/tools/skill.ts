@@ -2,11 +2,23 @@ import { readdirSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { tool } from "ai";
 import { z } from "zod";
-// Type-only re-export — `skill-parser.ts` pulls in yaml; importing the type
-// here is erased at compile time so the runtime bundle stays yaml-free.
-// Build-time codegen imports { parseSkill } from "./skill-parser" directly.
-export type { SkillDef } from "./skill-parser";
-import type { SkillDef } from "./skill-parser";
+
+/**
+ * Schemas + types live here so the runtime owns its own shape. Parsing
+ * (`matter()`, yaml) lives in the CLI at `packages/openxyz/bin/parsers/skill.ts`
+ * — a build-time concern, not a runtime one.
+ */
+const SkillFrontmatterSchema = z.object({
+  name: z.string(),
+  description: z.string(),
+});
+
+export const SkillDefSchema = SkillFrontmatterSchema.extend({
+  content: z.string(),
+  location: z.string(),
+});
+
+export type SkillDef = z.infer<typeof SkillDefSchema>;
 
 // TODO: SKILL.md frontmatter could support `allowed-tools` to restrict which tools the agent
 //  can use while executing a skill (e.g. research skill only allows web_search + web_fetch).
