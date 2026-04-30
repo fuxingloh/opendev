@@ -1,5 +1,3 @@
-import { readFileSync } from "node:fs";
-import { fileURLToPath } from "node:url";
 import { initWasm, Resvg } from "@resvg/resvg-wasm";
 import { getNodeChildren, getNodeValue } from "chat";
 import type { MdastTable, TableRow } from "chat";
@@ -23,22 +21,16 @@ type AnyMdastNode = Parameters<typeof getNodeChildren>[0];
 // identically on macOS dev and Vercel Linux prod.
 //
 // Asset loading: vendored Roboto Regular + Bold TTFs and the resvg WASM
-// are imported via Bun's `with { type: "file" }` attribute. Bun.build
-// copies each asset to the bundle output with a hashed filename and
-// rewrites the import to a relative path string. At runtime we resolve
-// the path against `import.meta.url` (script location, not cwd) and read
-// synchronously at module init via `fs.readFileSync` — same pattern
-// `@vercel/og` uses.
-import RobotoRegularPath from "./fonts/Roboto-Regular.ttf" with { type: "file" };
-import RobotoBoldPath from "./fonts/Roboto-Bold.ttf" with { type: "file" };
-// `@resvg/resvg-wasm/index_bg.wasm` is the WASM byte stream. Importing it
-// via the file loader bundles it alongside `server.js` and gives us a
-// path string we can `readFileSync` and pass to `initWasm`.
-import ResvgWasmPath from "@resvg/resvg-wasm/index_bg.wasm" with { type: "file" };
+// are imported via Bun's `with { type: "binary" }` attribute. Bun.build
+// inlines each asset's bytes as a `Uint8Array` literal, baked into the
+// bundle. No runtime file read, no `import.meta.url` resolution, no
+// dependency on the host runtime's fs implementation — works identically
+// on Vercel Node 22, Cloudflare Workers (where `fs.readFileSync` is only
+// partially polyfilled by `nodejs_compat`), Deno, and the browser.
+import robotoRegular from "./fonts/Roboto-Regular.ttf" with { type: "binary" };
+import robotoBold from "./fonts/Roboto-Bold.ttf" with { type: "binary" };
+import resvgWasm from "@resvg/resvg-wasm/index_bg.wasm" with { type: "binary" };
 
-const robotoRegular = readFileSync(fileURLToPath(new URL(RobotoRegularPath, import.meta.url)));
-const robotoBold = readFileSync(fileURLToPath(new URL(RobotoBoldPath, import.meta.url)));
-const resvgWasm = readFileSync(fileURLToPath(new URL(ResvgWasmPath, import.meta.url)));
 const initializedResvg = initWasm(resvgWasm);
 
 const FONT_SIZE = 14;
