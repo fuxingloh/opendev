@@ -2,35 +2,16 @@ import { readdirSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { tool } from "ai";
 import { z } from "zod";
-import { matter } from "../utils/frontmatter";
+// Type-only re-export — `skill-parser.ts` pulls in yaml; importing the type
+// here is erased at compile time so the runtime bundle stays yaml-free.
+// Build-time codegen imports { parseSkill } from "./skill-parser" directly.
+export type { SkillDef } from "./skill-parser";
+import type { SkillDef } from "./skill-parser";
 
 // TODO: SKILL.md frontmatter could support `allowed-tools` to restrict which tools the agent
 //  can use while executing a skill (e.g. research skill only allows web_search + web_fetch).
 //  Claude Code and opencode both support this. May or may not want this — skills currently
 //  just inject instructions, they don't constrain the tool set.
-const SkillFrontmatterSchema = z.object({
-  name: z.string(),
-  description: z.string(),
-});
-
-const SkillDefSchema = SkillFrontmatterSchema.extend({
-  content: z.string(),
-  location: z.string(),
-});
-
-export type SkillDef = z.infer<typeof SkillDefSchema>;
-
-export function parseSkill(path: string, raw: string): SkillDef | undefined {
-  const { data, content } = matter(raw);
-  const result = SkillDefSchema.safeParse({ ...data, content, location: path });
-  if (!result.success) {
-    console.warn(
-      `[openxyz] skill "${path}" invalid frontmatter: ${result.error.issues.map((i) => i.message).join(", ")}`,
-    );
-    return undefined;
-  }
-  return result.data;
-}
 
 export function createSkillTool(skills: SkillDef[]) {
   return tool({

@@ -1,10 +1,11 @@
 import { mkdirSync, rmSync } from "node:fs";
 import { resolve, relative, join, basename } from "node:path";
-import { parseAgent } from "@openxyz/runtime/agents/factory";
+import { parseAgent } from "@openxyz/runtime/agents/parser";
 import { scanDir, type OpenXyzFiles } from "../../scan";
 import { generateEntrypoint } from "./entrypoint";
 import { generateWranglerJsonc } from "./wrangler";
 import { virtualRuntimePlugin } from "./plugins/virtual-runtime";
+import { vfileBrowserShimPlugin } from "./plugins/vfile-browser-shim";
 import { inMemoryWorkspacePlugin } from "../plugins/in-memory-workspace";
 import { modelsApiPrefetchPlugin } from "../plugins/models-api-prefetch";
 import { prefetchForBuild } from "../../../models/providers/_api";
@@ -70,6 +71,7 @@ export async function buildCloudflare(cwd: string): Promise<void> {
     plugins: [
       inMemoryWorkspacePlugin(cwd, files.files),
       virtualRuntimePlugin(),
+      vfileBrowserShimPlugin(),
       modelsApiPrefetchPlugin(prefetchedLimits),
     ],
   });
