@@ -26,7 +26,8 @@ It deliberately does _not_ moderate, police content, or summarize unprompted. It
 2. Add the bot to your group. Grab the group's chat ID — the easiest way is to send any message in the group and check the Telegram API response, or use a bot like [@username_to_id_bot](https://t.me/username_to_id_bot). Group chat IDs are negative, like `-1001234567890`.
 3. Edit `.env.local`:
    - `TELEGRAM_BOT_TOKEN` — from @BotFather
-   - `TELEGRAM_GROUP_ALLOWLIST` — comma-separated group chat IDs where the bot is allowed to participate (the allowlist is **groups**, not users — so the bot can't be dragged into a stranger's group if someone adds it uninvited)
+   - `TELEGRAM_GROUP_ALLOWLIST` — comma-separated group chat IDs where the bot is allowed to participate (so the bot can't be dragged into a stranger's group if someone adds it uninvited)
+   - `TELEGRAM_USER_ALLOWLIST` — comma-separated user IDs allowed to DM the bot one-on-one (leave blank to reject all DMs and stay group-only)
    - `OPENXYZ_MODEL` — e.g. `bedrock/zai.glm-5`, `openai/gpt-5`; plus any provider credentials
 4. From the repo root: `bun install`
 5. Run it: `cd templates/openfamily && bun start`
@@ -35,9 +36,9 @@ It deliberately does _not_ moderate, police content, or summarize unprompted. It
 
 `bun run build` → `.vercel/output/`. Deploy via Vercel CLI or a git-connected project, set the env vars in the dashboard, point Telegram's webhook at `https://<deployment>/api/webhooks/telegram`.
 
-## Why no DMs?
+## DMs
 
-DMs are explicitly rejected — the persona and context handling are tuned for multi-participant conversations. If you want a one-on-one bot, use `templates/openbrain` (knowledge base) or `templates/openxyz-janitor` (project chief-of-staff).
+DMs are off by default. Add user IDs to `TELEGRAM_USER_ALLOWLIST` to let specific people (e.g. group members, moderators) talk to the bot one-on-one. The persona is tuned for multi-participant conversations, so for a dedicated 1:1 assistant `templates/openbrain` (knowledge base) or `templates/openxyz-janitor` (project chief-of-staff) are better fits.
 
 ## Making it yours
 
