@@ -49,6 +49,14 @@ export async function buildCloudflare(cwd: string): Promise<void> {
     define: {
       "process.env.NODE_ENV": JSON.stringify("production"),
       "process.env.OPENXYZ_PLATFORM": JSON.stringify("cloudflare"),
+      // Bun.build emits a top-level `createRequire(import.meta.url)` shim for
+      // CommonJS interop. Workers' deploy-time validation harness evaluates
+      // the module with `import.meta.url` undefined and the shim throws
+      // ("argument 'path' must be a file URL ... received 'undefined'").
+      // Stub it so the shim is constructible; lazy `__require()` calls inside
+      // CJS module factories only fire if the export is reached, so the
+      // hot path (chat-sdk webhooks → AI SDK → state DO) stays clean.
+      "import.meta.url": JSON.stringify("file:///worker.js"),
     },
     plugins: [
       inMemoryWorkspacePlugin(cwd, files.files),
