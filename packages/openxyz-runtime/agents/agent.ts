@@ -6,7 +6,7 @@ import {
   type SystemModelMessage,
   type Tool,
 } from "ai";
-import { estimateTokens, type Channel, type Message, type Session, type Thread } from "../channels";
+import { estimateTokens, type Channel, type Session, type Thread } from "../channels";
 import type { Model } from "../model";
 import type { SkillDef } from "../tools/skill";
 import type { AgentDef, AgentFactory } from "./factory";

@@ -1,5 +1,3 @@
-import { readdirSync } from "node:fs";
-import { join, dirname } from "node:path";
 import { tool } from "ai";
 import { z } from "zod";
 
@@ -15,7 +13,6 @@ const SkillFrontmatterSchema = z.object({
 
 export const SkillDefSchema = SkillFrontmatterSchema.extend({
   content: z.string(),
-  location: z.string(),
 });
 
 export type SkillDef = z.infer<typeof SkillDefSchema>;
@@ -26,40 +23,21 @@ export type SkillDef = z.infer<typeof SkillDefSchema>;
 //  just inject instructions, they don't constrain the tool set.
 
 export function createSkillTool(skills: SkillDef[]) {
+  // Skills are enumerated in the system prompt (see `formatSkillsXml` in
+  // `agents/agent.ts`). Don't repeat the list here — the agent already
+  // knows what's available before invoking this tool.
   return tool({
-    description: "Load a skill by name. Available skills are listed in the system prompt.",
+    description: "Load a skill by name to follow its domain-specific instructions.",
     inputSchema: z.object({
-      name: z.string().describe("The name of the skill from available skills."),
+      name: z.string().describe("Exact name of a skill from the system prompt's available_skills list."),
     }),
     execute: async ({ name }) => {
       const skill = skills.find((s) => s.name === name);
       if (!skill) {
         const available = skills.map((s) => s.name).join(", ");
-        throw new Error(`Skill "${name}" not found. Available skills: ${available || "none"}`);
+        throw new Error(`Skill "${name}" not found. Available: ${available || "none"}`);
       }
-
-      const dir = dirname(skill.location);
-      const files: string[] = [];
-      for (const entry of readdirSync(dir, { withFileTypes: true })) {
-        if (!entry.isFile()) continue;
-        if (entry.name === "SKILL.md") continue;
-        files.push(join(dir, entry.name));
-        if (files.length >= 10) break;
-      }
-
-      return [
-        `<skill_content name="${skill.name}">`,
-        `# Skill: ${skill.name}`,
-        "",
-        skill.content.trim(),
-        "",
-        `Base directory: ${dir}`,
-        "",
-        "<skill_files>",
-        ...files.map((f) => `<file>${f}</file>`),
-        "</skill_files>",
-        "</skill_content>",
-      ].join("\n");
+      return skill.content.trim();
     },
   });
 }
