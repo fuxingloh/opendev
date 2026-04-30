@@ -9,6 +9,16 @@ import { inMemoryWorkspacePlugin } from "../plugins/in-memory-workspace";
 import { modelsApiPrefetchPlugin } from "../plugins/models-api-prefetch";
 import { prefetchForBuild } from "../../../models/providers/_api";
 
+// Pin compatibility_date to a known-stable past date instead of `new Date()`.
+// Wrangler/workerd in the CI build image only knows compat dates up to its
+// release; setting today's date when wrangler is older than that breaks
+// `nodejs_compat` resolution (`No such module "node:process"` etc.). Bump
+// deliberately when we want newer compat semantics.
+// 2024-09-23 is the inflection point that put `node:process`/`node:buffer`
+// into the default `nodejs_compat` set — needed by vfile (via chat-sdk's
+// markdown pipeline) and yaml.
+const COMPATIBILITY_DATE = "2025-01-15";
+
 export async function buildCloudflare(cwd: string): Promise<void> {
   const files = await scanDir(cwd);
 
@@ -76,8 +86,10 @@ export async function buildCloudflare(cwd: string): Promise<void> {
   const wranglerPath = resolve(cwd, "wrangler.jsonc");
   const exists = await Bun.file(wranglerPath).exists();
   if (!exists) {
-    const today = new Date().toISOString().slice(0, 10);
-    await Bun.write(wranglerPath, generateWranglerJsonc({ name: basename(cwd), compatibility_date: today }));
+    await Bun.write(
+      wranglerPath,
+      generateWranglerJsonc({ name: basename(cwd), compatibility_date: COMPATIBILITY_DATE }),
+    );
   }
 
   console.log("");

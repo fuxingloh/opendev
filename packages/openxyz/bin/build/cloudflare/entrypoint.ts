@@ -13,7 +13,7 @@ import type { OpenXyzFiles } from "../../scan";
  * Mirrors `vercel/entrypoint.ts`; differences:
  *  - handler signature is `(req, env, ctx)` instead of `(req)`
  *  - `waitUntil` comes from `ctx.waitUntil`, not `@vercel/functions`
- *  - state adapter is `createCloudflareState({ namespace: env.OPENXYZ_STATE })`
+ *  - state adapter is `createCloudflareState({ namespace: env.CHAT_STATE })`
  *    instead of `TursoStateAdapter` over `getDb()`
  *  - re-exports `ChatStateDO` for the wrangler DO binding
  */
@@ -98,7 +98,7 @@ export async function generateEntrypoint(
   }
 
   // Re-export the DO class so wrangler can bind it. mnemonic/133 piece 5
-  // wires `OPENXYZ_STATE` in wrangler.jsonc to this class.
+  // wires `CHAT_STATE` in wrangler.jsonc to this class.
   body.push(`export { ChatStateDO };`);
   body.push(``);
 
@@ -132,13 +132,13 @@ export async function generateEntrypoint(
   // Cloudflare passes env + ctx per-request; OpenXyz init must run inside
   // fetch (env isn't available at module-eval time on Workers). Cache the
   // init promise so subsequent requests in the same isolate reuse it.
-  body.push(`type Env = { OPENXYZ_STATE: DurableObjectNamespace<ChatStateDO> };`);
+  body.push(`type Env = { CHAT_STATE: DurableObjectNamespace<ChatStateDO> };`);
   body.push(`let __initialized: Promise<void> | undefined;`);
   body.push(`function __ensureInit(env: Env): Promise<void> {`);
   body.push(`  if (!__initialized) {`);
   body.push(`    __initialized = openxyz.init({`);
   body.push(`      state: createCloudflareState({`);
-  body.push(`        namespace: env.OPENXYZ_STATE,`);
+  body.push(`        namespace: env.CHAT_STATE,`);
   body.push(`        shardKey: (id) => id.split(":")[0],`);
   body.push(`      }),`);
   body.push(`    });`);

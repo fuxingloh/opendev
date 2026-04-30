@@ -9,8 +9,10 @@ export type WranglerConfig = {
 };
 
 export function generateWranglerJsonc(opts: WranglerConfig): string {
-  // mnemonic/133: OPENXYZ_STATE binding name uses our namespacing convention,
-  // not chat-state-cloudflare-do's example CHAT_STATE.
+  // mnemonic/133: binding name reflects the chat-sdk StateAdapter role,
+  // not the openxyz brand. CHAT_STATE matches chat-state-cloudflare-do's
+  // convention; the OPENXYZ_* prefix is reserved for config vars
+  // (OPENXYZ_BACKEND, OPENXYZ_MODEL), not runtime bindings.
   const cfg = {
     $schema: "node_modules/wrangler/config-schema.json",
     name: opts.name,
@@ -22,7 +24,7 @@ export function generateWranglerJsonc(opts: WranglerConfig): string {
     // `process.env.X` reads keep working.
     compatibility_flags: ["nodejs_compat"],
     durable_objects: {
-      bindings: [{ name: "OPENXYZ_STATE", class_name: "ChatStateDO" }],
+      bindings: [{ name: "CHAT_STATE", class_name: "ChatStateDO" }],
     },
     migrations: [{ tag: "v1", new_sqlite_classes: ["ChatStateDO"] }],
     observability: { enabled: true },
