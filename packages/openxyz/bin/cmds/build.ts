@@ -1,23 +1,22 @@
 import { Command } from "commander";
-import { buildVercel } from "../build";
+import { build, PLATFORMS, type Platform } from "../build";
 
 export default new Command("build")
   .description("Build the openxyz agent for deployment")
-  .option("--output <type>", "Output target: 'vercel'", "vercel")
+  .option("--platform <name>", `Deployment platform: ${PLATFORMS.join(" | ")}`, "vercel")
   .action(action);
 
-type Opts = { output: string };
+type Opts = { platform: string };
 
 async function action(opts: Opts): Promise<void> {
   const cwd = process.cwd();
   process.env.NODE_ENV = "production";
 
-  const target = opts.output ?? (process.env.VERCEL === "1" ? "vercel" : "vercel");
-  if (target !== "vercel") {
-    console.error(`[openxyz] unsupported --output '${target}'. Only 'vercel' is supported in v1.`);
+  const platform = opts.platform as Platform;
+  if (!PLATFORMS.includes(platform)) {
+    console.error(`[openxyz] unsupported --platform '${platform}'. Expected one of: ${PLATFORMS.join(", ")}.`);
     process.exit(1);
   }
 
-  console.log(`▶ Building for Vercel...`);
-  await buildVercel(cwd);
+  await build(cwd, platform);
 }

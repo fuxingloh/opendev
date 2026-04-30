@@ -1,7 +1,7 @@
 import { join, relative } from "node:path";
 import { parseAgent } from "@openxyz/runtime/agents/factory";
 import { parseSkill } from "@openxyz/runtime/tools/skill";
-import type { OpenXyzFiles } from "../scan";
+import type { OpenXyzFiles } from "../../scan";
 
 /**
  * Code-gen the Vercel function entrypoint: a single `server.ts` that imports
@@ -29,7 +29,7 @@ export async function generateEntrypoint(
   };
   // Path to openxyz's shipped `models/auto.ts` on the build machine.
   // Injected when no template-provided `models/auto.ts` exists.
-  const shippedAuto = new URL("../../models/auto.ts", import.meta.url).pathname;
+  const shippedAuto = new URL("../../../models/auto.ts", import.meta.url).pathname;
   const t = scan.template;
 
   // Merge shipped + template agents; template wins on name collision.

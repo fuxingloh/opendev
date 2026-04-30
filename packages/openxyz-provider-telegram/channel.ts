@@ -12,7 +12,7 @@ import type { MdastTable, Root } from "chat";
 import type { Adapter as ChatSdkAdapter } from "chat";
 import type { ModelMessage, SystemModelMessage } from "ai";
 import { Channel, Session, type ReplyAction, type Thread } from "@openxyz/runtime/channels";
-import { backend } from "@openxyz/runtime/backend";
+import { platform } from "@openxyz/runtime/platform";
 import { renderTablePng } from "./render-table";
 import { splitOnFinishStep } from "./split-stream";
 
@@ -46,12 +46,13 @@ export class TelegramChannel extends Channel<TelegramRaw> {
     super();
     this.#threaded = opts.threaded ?? false;
     this.#botToken = opts.botToken;
-    // On Vercel, the function is serverless — polling would block forever
-    // and bleed connections. Require webhook mode; the user runs Telegram's
-    // `setWebhook` once, pointing at `https://<deploy>/webhooks/telegram`.
+    // On any serverless platform (Vercel, Cloudflare), polling would block
+    // forever and bleed connections. Require webhook mode; the user runs
+    // Telegram's `setWebhook` once, pointing at `https://<deploy>/webhooks/telegram`.
     // The adapter verifies the incoming request via TELEGRAM_WEBHOOK_SECRET_TOKEN
     // (or `secretToken` in opts) — set it or requests run unverified.
-    const mode: TelegramAdapterConfig["mode"] = backend() === "vercel" ? "webhook" : "polling";
+    const isDeployed = platform() === "vercel" || platform() === "cloudflare";
+    const mode: TelegramAdapterConfig["mode"] = isDeployed ? "webhook" : "polling";
     this.adapter = createTelegramAdapter({ ...opts, mode });
   }
 
