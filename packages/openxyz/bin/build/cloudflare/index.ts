@@ -4,7 +4,6 @@ import { parseAgent } from "@openxyz/runtime/agents/factory";
 import { scanDir, type OpenXyzFiles } from "../../scan";
 import { generateEntrypoint } from "./entrypoint";
 import { generateWranglerJsonc } from "./wrangler";
-import { FAVICON_SVG, generateFaviconIco } from "../favicon";
 import { virtualRuntimePlugin } from "./plugins/virtual-runtime";
 import { inMemoryWorkspacePlugin } from "../plugins/in-memory-workspace";
 import { modelsApiPrefetchPlugin } from "../plugins/models-api-prefetch";
@@ -70,13 +69,6 @@ export async function buildCloudflare(cwd: string): Promise<void> {
     for (const log of result.logs) console.error(log);
     process.exit(1);
   }
-
-  // Static assets: Workers Static Assets binding picks up everything under
-  // `./public` and serves before the worker runs.
-  const publicDir = resolve(cwd, "public");
-  mkdirSync(publicDir, { recursive: true });
-  await Bun.write(resolve(publicDir, "favicon.svg"), FAVICON_SVG);
-  await Bun.write(resolve(publicDir, "favicon.ico"), await generateFaviconIco(FAVICON_SVG));
 
   // wrangler.jsonc — name defaults to the template directory's name. The
   // user can override later by hand-editing; we don't clobber an existing

@@ -3,7 +3,6 @@ import { resolve, relative, join } from "node:path";
 import { parseAgent } from "@openxyz/runtime/agents/factory";
 import { scanDir, type OpenXyzFiles } from "../../scan";
 import { generateEntrypoint } from "./entrypoint";
-import { FAVICON_SVG, generateFaviconIco } from "../favicon";
 import { virtualRuntimePlugin } from "./plugins/virtual-runtime";
 import { inMemoryWorkspacePlugin } from "../plugins/in-memory-workspace";
 import { modelsApiPrefetchPlugin } from "../plugins/models-api-prefetch";
@@ -91,24 +90,19 @@ export async function buildVercel(cwd: string): Promise<void> {
     JSON.stringify(
       {
         version: 3,
-        // Static assets first (favicon, etc.), webhook paths to the function,
-        // everything else 404s at the edge. The trailing `status: 404` rule
-        // is needed — without it Vercel routes unmatched paths to the
-        // function-at-root by default (which then just 404s but wakes the
-        // lambda for every bot/scanner hit).
-        routes: [{ handle: "filesystem" }, { src: "/api/webhooks/([^/]+)/?", dest: "/" }, { src: "/.*", status: 404 }],
+        // Webhook paths route to the function; everything else 404s at the
+        // edge. The trailing `status: 404` rule is required — without it
+        // Vercel routes unmatched paths to the function-at-root by default
+        // (which then just 404s but wakes the lambda for every bot/scanner hit).
+        routes: [
+          { src: "/api/webhooks/([^/]+)/?", dest: "/" },
+          { src: "/.*", status: 404 },
+        ],
       },
       null,
       2,
     ),
   );
-
-  // Static assets: ship both favicon.svg (modern browsers) and favicon.ico
-  // (legacy user-agents and the reflexive GET /favicon.ico Vercel serves).
-  const staticDir = resolve(outputDir, "static");
-  mkdirSync(staticDir, { recursive: true });
-  await Bun.write(resolve(staticDir, "favicon.svg"), FAVICON_SVG);
-  await Bun.write(resolve(staticDir, "favicon.ico"), await generateFaviconIco(FAVICON_SVG));
 
   const copied = copyEnvFiles(cwd, funcDir);
 
@@ -116,7 +110,6 @@ export async function buildVercel(cwd: string): Promise<void> {
   console.log("Build complete! Output:");
   console.log(`  ${relative(cwd, resolve(outputDir, "config.json"))}`);
   console.log(`  ${relative(cwd, resolve(funcDir, "server.js"))}`);
-  console.log(`  ${relative(cwd, staticDir)}/`);
   for (const f of copied) console.log(`  ${relative(cwd, resolve(funcDir, f))}`);
 }
 
