@@ -21,9 +21,6 @@ export function generateWranglerJsonc(opts: WranglerConfig): string {
     // mirrors Workers Secrets into `process.env` so existing
     // `process.env.X` reads keep working.
     compatibility_flags: ["nodejs_compat"],
-    // Static assets — Workers Static Assets short-circuits favicon hits
-    // before the worker wakes. Cheaper than routing through the function.
-    assets: { directory: "./public" },
     durable_objects: {
       bindings: [{ name: "OPENXYZ_STATE", class_name: "ChatStateDO" }],
     },

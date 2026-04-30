@@ -83,7 +83,6 @@ export async function buildCloudflare(cwd: string): Promise<void> {
   console.log("");
   console.log("Build complete! Output:");
   console.log(`  ${relative(cwd, resolve(distDir, "_worker.js"))}`);
-  console.log(`  ${relative(cwd, publicDir)}/`);
   console.log(`  ${relative(cwd, wranglerPath)}${exists ? " (existing — not overwritten)" : ""}`);
 }
 
