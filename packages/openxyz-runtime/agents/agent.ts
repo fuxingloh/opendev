@@ -323,6 +323,14 @@ export class Agent {
     await this.#compactSession(session, thread);
 
     const history = await session.messages();
+    // Turn-start counts: how many user messages just landed, total history
+    // depth the model is about to see. When a question goes unanswered the
+    // pair (newUser, history) tells you whether the question reached the
+    // prompt at all (n>0) versus fell off in compaction (history short).
+    const newUser = messages.filter((m) => m.role === "user").length;
+    console.info(
+      `[openxyz] agent.run agent=${this.name} thread=${thread.id} newUser=${newUser} history=${history.length}`,
+    );
     // System before conversation — Bedrock and some other providers reject
     // system messages interleaved between user/assistant turns. Per-message
     // env annotations live on the user messages themselves (channel concern).

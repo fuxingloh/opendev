@@ -162,6 +162,17 @@ export class OpenXyz {
     // tiebreaks 1s `dateSent` ties on the monotonic per-chat message_id),
     // so let it sort.
     const incoming = channel.sortMessages([...(context?.skipped ?? []), message]);
+
+    // Burst-aware log line — single source of truth for "what did this turn
+    // see?" per webhook. `trigger` is what chat-sdk dispatched on; `skipped`
+    // is the queue-debounce burst (mnemonic/097) folded in alongside; `order`
+    // is the post-sort send order. Always log so a missed-question report
+    // (e.g. "I asked X but it replied to Y") can be cross-checked against
+    // what actually arrived in the same window.
+    console.info(
+      `[openxyz] onMessage thread=${thread.id} trigger=${message.id} skipped=${context?.skipped?.length ?? 0} order=${JSON.stringify(incoming.map((m) => ({ id: m.id, preview: previewText(m.text) })))}`,
+    );
+
     const actions = await Promise.all(
       incoming.map(async (message) => {
         const action = await channel.reply(thread, message);
@@ -187,7 +198,12 @@ export class OpenXyz {
 
     // `reply` is the trigger signal — does this message cause an agent turn?
     // No reply=true messages → nobody asked the bot to engage, stay silent.
-    if (!actions.some((a) => a.reply)) return;
+    if (!actions.some((a) => a.reply)) {
+      console.info(
+        `[openxyz] onMessage no-reply thread=${thread.id} actions=${actions.length} (none returned reply: true)`,
+      );
+      return;
+    }
 
     // Typing indicator fires once now that we know an agent will run.
     // Fire-and-forget; a single failed call can't block the turn.
@@ -217,6 +233,13 @@ export class OpenXyz {
     // unchanged — `agent.run` appends to the session in order and hands the
     // full prompt to the LLM.
     const messages = await channel.toModelMessages(thread, [...prior, ...burst]);
+
+    // Final hand-off snapshot: prior + burst counts and the message preview
+    // the LLM is about to see. When a question goes unanswered, this line
+    // confirms whether the agent ever received it.
+    console.info(
+      `[openxyz] dispatch thread=${thread.id} agent=${channel.agent} prior=${prior.length} burst=${burst.length} messages=${messages.length} previews=${JSON.stringify(messages.map(previewModelMessage))}`,
+    );
 
     await this.dispatch({ thread, channel, messages });
   }
@@ -307,6 +330,27 @@ export class OpenXyz {
 function once<T>(fn: () => Promise<T>): () => Promise<T> {
   let cached: Promise<T> | undefined;
   return () => (cached ??= fn());
+}
+
+/** Short single-line preview of a chat message body for log lines. */
+function previewText(text: string | undefined, max = 80): string {
+  if (!text) return "";
+  const flat = text.replace(/\s+/g, " ").trim();
+  return flat.length > max ? `${flat.slice(0, max - 1)}…` : flat;
+}
+
+/** Role + preview for a ModelMessage, for the dispatch log line. */
+function previewModelMessage(m: ModelMessage): { role: string; preview: string } {
+  const c = m.content;
+  if (typeof c === "string") return { role: m.role, preview: previewText(c) };
+  if (Array.isArray(c)) {
+    const text = c
+      .map((p) => (p as { type?: string; text?: string }).text ?? "")
+      .filter(Boolean)
+      .join(" ");
+    return { role: m.role, preview: previewText(text) };
+  }
+  return { role: m.role, preview: "" };
 }
 
 /**
