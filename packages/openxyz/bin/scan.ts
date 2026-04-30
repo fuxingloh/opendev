@@ -83,14 +83,18 @@ async function scanSkills(cwd: string): Promise<Record<string, string>> {
   return out;
 }
 
-// Agent-facing deny (`.env*`, `.openxyz/`, `.vercel/`) also enforced at runtime
-// by `@openxyz/runtime/drives/filtered-fs` — keep the two lists in sync.
+// Agent-facing deny (`.env*`, `.openxyz/`, `.vercel/`, `dist/`, `public/`,
+// `wrangler.{jsonc,toml}`) also enforced at runtime by
+// `@openxyz/runtime/drives/filtered-fs` — keep the two lists in sync.
 // Build-only noise (`node_modules/`, `.git/`, `.DS_Store`) is appended here;
 // those don't need runtime enforcement, they'd just bloat the packed bundle.
 const IGNORE = [
   /(^|\/)\.env/,
   /^\.openxyz(\/|$)/,
   /^\.vercel(\/|$)/,
+  /^dist(\/|$)/,
+  /^public(\/|$)/,
+  /^wrangler\.(jsonc|toml)$/,
   /^node_modules\//,
   /^\.git\//,
   /(^|\/)\.DS_Store$/,

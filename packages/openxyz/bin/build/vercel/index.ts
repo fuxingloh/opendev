@@ -4,7 +4,7 @@ import { parseAgent } from "@openxyz/runtime/agents/factory";
 import { scanDir, type OpenXyzFiles } from "../../scan";
 import { generateEntrypoint } from "./entrypoint";
 import { FAVICON_SVG, generateFaviconIco } from "../favicon";
-import { virtualRuntimePlugin } from "../plugins/virtual-runtime";
+import { virtualRuntimePlugin } from "./plugins/virtual-runtime";
 import { inMemoryWorkspacePlugin } from "../plugins/in-memory-workspace";
 import { modelsApiPrefetchPlugin } from "../plugins/models-api-prefetch";
 import { forceTursoServerlessPlugin } from "./plugins/force-turso-serverless";

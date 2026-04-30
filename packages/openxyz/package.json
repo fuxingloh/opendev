@@ -24,6 +24,7 @@
     "@openxyz/runtime": "workspace:*",
     "@vercel/functions": "^3",
     "chat": "catalog:",
+    "chat-state-cloudflare-do": "^0.2.0",
     "commander": "^14.0.3",
     "sharp": "^0.34.0",
     "zod": "^4"

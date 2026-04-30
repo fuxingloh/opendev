@@ -1,4 +1,5 @@
 import { buildVercel } from "./vercel";
+import { buildCloudflare } from "./cloudflare";
 
 export type Platform = "vercel" | "cloudflare";
 
@@ -11,12 +12,11 @@ export async function build(cwd: string, platform: Platform): Promise<void> {
     return;
   }
   if (platform === "cloudflare") {
-    // mnemonic/133 piece 4 lands the real impl
-    throw new Error(
-      "[openxyz] --platform cloudflare is not implemented yet. " + "See mnemonic/133 for the migration plan.",
-    );
+    console.log("▶ Building for Cloudflare Workers...");
+    await buildCloudflare(cwd);
+    return;
   }
   throw new Error(`[openxyz] unknown platform: ${platform}`);
 }
 
-export { buildVercel };
+export { buildVercel, buildCloudflare };

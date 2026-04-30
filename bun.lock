@@ -46,6 +46,7 @@
         "@openxyz/runtime": "workspace:*",
         "@vercel/functions": "^3",
         "chat": "catalog:",
+        "chat-state-cloudflare-do": "^0.2.0",
         "commander": "^14.0.3",
         "sharp": "^0.34.0",
         "zod": "^4",
@@ -381,6 +382,8 @@
     "character-entities": ["character-entities@2.0.2", "", {}, "sha512-shx7oQ0Awen/BRIdkjkvz54PnEEI/EjwXDSIZp86/KKdbafHh1Df/RYGBhn4hbe2+uKC9FnT5UCEdyPz3ai9hQ=="],
 
     "chat": ["chat@4.26.0", "", { "dependencies": { "@workflow/serde": "4.1.0-beta.2", "mdast-util-to-string": "^4.0.0", "remark-gfm": "^4.0.0", "remark-parse": "^11.0.0", "remark-stringify": "^11.0.0", "remend": "^1.2.1", "unified": "^11.0.5" } }, "sha512-QToDnIEGpyb8yQA6YLMHOSRK30YVk4RtsyFyuWFYyB2c4jQlyIrSWtwVK7qyvmvqzQp9uDwCdJRAhS8GtCHAGQ=="],
+
+    "chat-state-cloudflare-do": ["chat-state-cloudflare-do@0.2.0", "", { "peerDependencies": { "chat": "^4.26.0" } }, "sha512-ZBOwJXcj5p0fduzRwgVeiH/I7/QFyXFt2ObffSvdMg492j8ulLa+1dzOaiMJlE8isIfxgY9sJkC3b5hNlvURSA=="],
 
     "chownr": ["chownr@1.1.4", "", {}, "sha512-jJ0bqzaylmJtVnNgzTeSOs8DPavpbYgEr/b0YL8/2GO3xJEhInFmhKMUnEJQjZumK7KXGFhUy89PrsJWlakBVg=="],
 

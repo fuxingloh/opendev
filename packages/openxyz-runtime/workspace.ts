@@ -4,12 +4,13 @@ import { IgnoredFs } from "./fs/ignored.ts";
 
 /**
  * Paths hidden from the agent — secrets (`.env*`) and local build/deploy
- * output (`.openxyz/`, `.vercel/`). The same list is duplicated in
- * `packages/openxyz/bin/scan.ts` so the build-time pack step strips them
- * from the packed snapshot. Keep both in sync.
+ * output (`.openxyz/`, `.vercel/`, `dist/`, `public/`, `wrangler.{jsonc,toml}`).
+ * The same list is duplicated in `packages/openxyz/bin/scan.ts` so the
+ * build-time pack step strips them from the packed snapshot. Keep both
+ * in sync.
  */
 // `**/.env*` catches nested `.env` files too (e.g. templates with subprojects).
-const IGNORES = ["**/.env*", ".openxyz", ".vercel"];
+const IGNORES = ["**/.env*", ".openxyz", ".vercel", "dist", "public", "wrangler.jsonc", "wrangler.toml"];
 
 /**
  * Drive backing the agent's home directory.
