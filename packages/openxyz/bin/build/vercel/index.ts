@@ -7,6 +7,7 @@ import { virtualRuntimePlugin } from "./plugins/virtual-runtime";
 import { inMemoryWorkspacePlugin } from "../plugins/in-memory-workspace";
 import { modelsApiPrefetchPlugin } from "../plugins/models-api-prefetch";
 import { forceTursoServerlessPlugin } from "./plugins/force-turso-serverless";
+import { inlineWasmPlugin } from "./plugins/inline-wasm";
 import { prefetchForBuild } from "../../../models/providers/_api";
 
 export async function buildVercel(cwd: string): Promise<void> {
@@ -55,6 +56,7 @@ export async function buildVercel(cwd: string): Promise<void> {
       virtualRuntimePlugin(),
       modelsApiPrefetchPlugin(prefetchedLimits),
       forceTursoServerlessPlugin(),
+      inlineWasmPlugin(),
     ],
   });
 
