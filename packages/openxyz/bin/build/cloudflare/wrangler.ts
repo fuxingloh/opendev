@@ -31,6 +31,13 @@ export function generateWranglerJsonc(opts: WranglerConfig): string {
     // date 2025-04-01; we keep it explicit so older compat dates still
     // work if the user hand-edits the file.
     compatibility_flags: ["nodejs_compat", "nodejs_compat_populate_process_env"],
+    // Preserve plaintext `vars` set via the Cloudflare dashboard. Without
+    // this, `wrangler deploy` overwrites remote `vars` with whatever the
+    // local config declares (none, by default) — stripping dashboard-set
+    // values like TELEGRAM_ALLOWLIST mid-deploy and crashing module-init
+    // env reads during startup validation. Secrets are unaffected either
+    // way (managed separately, never touched by `deploy`).
+    keep_vars: true,
     durable_objects: {
       bindings: [{ name: "CHAT_STATE", class_name: "ChatStateDO" }],
     },
