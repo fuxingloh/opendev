@@ -69,10 +69,55 @@ export class TelegramChannel extends Channel<TelegramRaw> {
     // preserves Telegram's reply/forward XML annotation so the agent sees
     // conversation structure, not just flat text.
     const botUserId = (this.adapter as { botUserId?: string }).botUserId;
+
+    // Diagnostic for "agent didn't see attached photo": surface what arrives
+    // before toAiMessages so Vercel logs show whether attachments are present,
+    // whether fetchData survived cache rehydration, and whether anything
+    // downstream silently drops them. Remove once the photo path is proven.
+    for (const msg of messages) {
+      const atts = msg.attachments ?? [];
+      if (atts.length === 0) continue;
+      console.log("[openxyz/telegram] inbound attachments", {
+        msgId: msg.id,
+        textLen: msg.text.length,
+        attachments: atts.map((a) => ({
+          type: a.type,
+          mimeType: a.mimeType,
+          name: a.name,
+          hasFetchData: typeof a.fetchData === "function",
+        })),
+      });
+    }
+
     const result = await toAiMessages(messages, {
       includeNames: !thread.isDM,
       transformMessage: (aiMsg, src) => annotate(aiMsg, src, botUserId),
+      onUnsupportedAttachment: (att, msg) => {
+        console.warn("[openxyz/telegram] unsupported attachment skipped", {
+          msgId: msg.id,
+          type: att.type,
+          mimeType: att.mimeType,
+        });
+      },
     });
+
+    // Result is filtered (empty-text msgs dropped) so indices don't align
+    // with `messages`. Log shape only — pair with the inbound log above by
+    // attachment count to confirm the photo became a `file` part.
+    for (const m of result) {
+      if (m.role !== "user" || typeof m.content === "string") continue;
+      const parts = m.content.map((p) => {
+        if (p.type === "text") return { type: "text", textLen: p.text.length };
+        if (p.type === "file")
+          return { type: "file", mediaType: p.mediaType, dataLen: typeof p.data === "string" ? p.data.length : -1 };
+        if (p.type === "image") return { type: "image" };
+        return { type: p.type };
+      });
+      if (parts.some((p) => p.type !== "text")) {
+        console.log("[openxyz/telegram] outbound user parts", { parts });
+      }
+    }
+
     return result as ModelMessage[];
   }
 
