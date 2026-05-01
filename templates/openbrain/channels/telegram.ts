@@ -12,12 +12,20 @@ export default new TelegramChannel({
   }),
 });
 
+/**
+ * Decides which messages enter the thread history at all. Bot's own messages
+ * must pass so the agent sees its prior turns; everyone else is allowlist-gated.
+ */
 export function filter(message: Message<TelegramRaw>, thread: Thread) {
   const botUserId = (thread.adapter as { botUserId?: string }).botUserId;
   if (botUserId && message.author.userId === botUserId) return true;
   return allowlist.has(message.author.userId);
 }
 
+/**
+ * DMs always reply; in groups only on `@mention` or reply-to-bot, to avoid
+ * hijacking unrelated chatter.
+ */
 export async function reply(thread: Thread, message: Message<TelegramRaw>) {
   if (!allowlist.has(message.author.userId)) return false;
   if (thread.isDM) return true;
