@@ -19,10 +19,18 @@ export function generateWranglerJsonc(opts: WranglerConfig): string {
     main: "dist/_worker.js",
     compatibility_date: opts.compatibility_date,
     // nodejs_compat covers fs/path/crypto/stream/events used across the
-    // bundle (chat-sdk, AI SDK, our own utils). Workers' polyfill also
-    // mirrors Workers Secrets into `process.env` so existing
-    // `process.env.X` reads keep working.
-    compatibility_flags: ["nodejs_compat"],
+    // bundle (chat-sdk, AI SDK, our own utils). Workers' polyfill mirrors
+    // Workers Secrets into `process.env` so existing `process.env.X`
+    // reads keep working.
+    //
+    // nodejs_compat_populate_process_env additionally exposes plaintext
+    // `vars` (not just secrets) via `process.env`. Without it, channel
+    // modules that read non-secret env vars at module-init (e.g.
+    // TELEGRAM_ALLOWLIST in templates/openbrain/channels/telegram.ts)
+    // fail Cloudflare's startup validation. Becomes default at compat
+    // date 2025-04-01; we keep it explicit so older compat dates still
+    // work if the user hand-edits the file.
+    compatibility_flags: ["nodejs_compat", "nodejs_compat_populate_process_env"],
     durable_objects: {
       bindings: [{ name: "CHAT_STATE", class_name: "ChatStateDO" }],
     },
