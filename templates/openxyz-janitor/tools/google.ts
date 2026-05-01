@@ -1,11 +1,9 @@
 import { google } from "@ai-sdk/google";
 import { stepCountIs, ToolLoopAgent } from "ai";
 import { tool, z } from "openxyz/tools";
-import { readEnv } from "openxyz/env";
+import { env } from "openxyz/env";
 
-readEnv("GOOGLE_GENERATIVE_AI_API_KEY", {
-  description: "Google Generative AI (Gemini) API key — https://aistudio.google.com/apikey",
-});
+env.GOOGLE_GENERATIVE_AI_API_KEY.describe("Google Generative AI (Gemini) API key — https://aistudio.google.com/apikey");
 
 // language=Markdown
 const instructions = `

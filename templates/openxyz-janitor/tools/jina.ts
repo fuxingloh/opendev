@@ -1,9 +1,7 @@
 import { tool, z } from "openxyz/tools";
-import { readEnv } from "openxyz/env";
+import { env } from "openxyz/env";
 
-const JINA_API_KEY = readEnv("JINA_API_KEY", {
-  description: "Jina Reader API key — https://jina.ai/reader",
-});
+const JINA_API_KEY = env.JINA_API_KEY.describe("Jina Reader API key — https://jina.ai/reader");
 
 interface JinaReaderResponse {
   code: number;

@@ -1,11 +1,9 @@
 import { xai } from "@ai-sdk/xai";
 import { stepCountIs, ToolLoopAgent } from "ai";
 import { tool, z } from "openxyz/tools";
-import { readEnv } from "openxyz/env";
+import { env } from "openxyz/env";
 
-readEnv("XAI_API_KEY", {
-  description: "xAI API key — https://console.x.ai (Grok Live Search requires a paid plan)",
-});
+env.XAI_API_KEY.describe("xAI API key — https://console.x.ai (Grok Live Search requires a paid plan)");
 
 // language=Markdown
 const instructions = `
