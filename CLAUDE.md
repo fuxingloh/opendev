@@ -208,3 +208,5 @@ Not something you need to worry about.
 - All packages use `"version": "0.0.0"` in source; real versions are set during CI publish.
 - All packages use `"type": "module"` (ESM-only).
 - **Never describe the filesystem as "virtual" in AI-facing tool descriptions** — the AI should think it's a normal filesystem.
+- **Never edit generated build artifacts inside `templates/<name>/`.** Files like `wrangler.jsonc`, `vercel.json`, and the entire `dist/` / `.vercel/output/` / `.openxyz/build/` trees are emitted by `openxyz build`. The source of truth lives in `packages/openxyz/bin/build/{cloudflare,vercel}/*` (e.g. `cloudflare/wrangler.ts` generates `wrangler.jsonc`). Edit the generator, not the artifact.
+- **CF env vars: `wrangler secret put` for secrets only.** Plaintext config (region, allowlists, model selection) belongs in the CF dashboard's Variables UI or in the wrangler-config generator's `vars` block — not as a secret. Generated `wrangler.jsonc` ships `keep_vars: true` so dashboard-set plaintext vars survive `wrangler deploy`.

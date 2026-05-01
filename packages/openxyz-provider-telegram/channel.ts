@@ -48,7 +48,7 @@ export class TelegramChannel extends Channel<TelegramRaw> {
     this.#botToken = opts.botToken;
     // On any serverless platform (Vercel, Cloudflare), polling would block
     // forever and bleed connections. Require webhook mode; the user runs
-    // Telegram's `setWebhook` once, pointing at `https://<deploy>/webhooks/telegram`.
+    // Telegram's `setWebhook` once, pointing at `https://<deploy>/api/webhooks/telegram`.
     // The adapter verifies the incoming request via TELEGRAM_WEBHOOK_SECRET_TOKEN
     // (or `secretToken` in opts) — set it or requests run unverified.
     const isDeployed = platform() === "vercel" || platform() === "cloudflare";
