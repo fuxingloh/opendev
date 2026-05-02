@@ -79,7 +79,7 @@ export class TelegramChannel extends Channel<TelegramRaw> {
     // prefill". Inject a descriptive placeholder so the filter keeps the
     // message and (where applicable) image parts flow through. Remove once
     // chat-sdk's filter learns to keep attachment-only messages (still
-    // unfixed in `chat@4.27.0`).
+    // unfixed in `chat@4.27.0`). Upstream: OXYZ-85.
     for (const msg of messages) {
       const atts = msg.attachments ?? [];
 
@@ -90,12 +90,13 @@ export class TelegramChannel extends Channel<TelegramRaw> {
       //    `mimeType`. chat-sdk's `attachmentToPart` falls back to `image/png`
       //    (`ai.ts:107`), Telegram always serves photos as JPEG, Bedrock detects
       //    the format mismatch from magic bytes and 400s. Stamp `image/jpeg`.
+      //    Upstream: OXYZ-86.
       //
       // 2. Image-as-document (`raw.document` with `mime_type: image/...`,
       //    `att.type === "file"`) is silently dropped because chat-sdk's
       //    `attachmentToPart` only handles `file` parts whose mimeType matches
       //    `isTextMimeType` (`ai.ts:122`). Reclassify as `att.type === "image"`
-      //    so it flows through the image branch.
+      //    so it flows through the image branch. Upstream: OXYZ-87.
       for (const att of atts) {
         if (att.type === "image" && !att.mimeType) {
           (att as { mimeType: string }).mimeType = "image/jpeg";

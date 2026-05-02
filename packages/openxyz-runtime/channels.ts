@@ -77,6 +77,44 @@ export abstract class Channel<Raw = unknown> {
    * annotation their platform needs. Returning N messages keeps each
    * platform message addressable; the runtime forwards the array to the
    * LLM in arrival order.
+   *
+   * **chat-sdk gotchas every adapter must work around (mnemonic/143).**
+   * `toAiMessages` is the only conversion seam between chat-sdk's `Message`
+   * and the AI SDK's `ModelMessage`, so anything chat-sdk drops/mishandles
+   * has to be patched here — once the burst is converted and stored in the
+   * session, downstream reads inherit the shape. Known gaps in chat-sdk
+   * 4.27.0 (file `OXYZ-*` issues to track upstream fixes):
+   *
+   * - **Empty-text-with-attachment dropped** (OXYZ-85): the filter at
+   *   `chat/src/ai.ts:185` is `msg.text.trim()` — messages with an
+   *   attachment but no caption get filtered out entirely. If the filtered
+   *   message was the only one in the burst, `session.append([])` is a
+   *   no-op, the prompt ends with the previous assistant turn, and most
+   *   providers (Bedrock Sonnet 4.6 in particular) reject with a "no
+   *   prefill" error. **Workaround:** before calling `toAiMessages`,
+   *   inject placeholder text on any message with empty `text` but
+   *   non-text payload (attachments, location, venue).
+   * - **Photo `mimeType` mis-default** (OXYZ-86 — Telegram-specific but
+   *   any adapter that builds `Attachment` without `mimeType` hits this):
+   *   `attachmentToPart` falls back to `image/png` (`ai.ts:107`), but
+   *   most platforms deliver photos as JPEG. Anthropic on Bedrock
+   *   detects the format mismatch from magic bytes and 400s. **Workaround:**
+   *   stamp the correct `mimeType` on every image attachment before
+   *   conversion. If your platform's photo path always returns JPEG,
+   *   hardcode `image/jpeg`; otherwise sniff from bytes or platform
+   *   metadata.
+   * - **Image-as-document silently dropped** (OXYZ-87): `attachmentToPart`
+   *   at `ai.ts:122` only handles `att.type === "file"` if mimeType
+   *   matches `isTextMimeType`. JPEG/PNG file-type attachments return
+   *   `null`. **Workaround:** reclassify any `att.type === "file"` whose
+   *   `mimeType` starts with `image/` as `att.type === "image"` before
+   *   calling `toAiMessages` — that routes it through the working image
+   *   branch.
+   *
+   * See `packages/openxyz-provider-telegram/channel.ts` for a reference
+   * implementation of all three workarounds. Grep `mnemonic/143` to find
+   * every workaround block once the upstream tickets land — they're meant
+   * to be ripped out, not maintained.
    */
   abstract toModelMessages(thread: Thread, messages: Message<Raw>[]): Promise<ModelMessage[]>;
 
