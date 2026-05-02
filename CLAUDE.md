@@ -165,6 +165,8 @@ Never comment what the code already says. `// increment counter` above `i++` add
 
 When in doubt, ask: "could a future maintainer reconstruct this reasoning from a clean read of the code?" If yes, skip the comment. If no, write it — and keep it tight.
 
+**Never orphan a doc block.** Every `/** … */` sits directly above the function/type/const it describes — no blank-line gap, no other definition between them. After inserting a new function adjacent to an existing one, re-read the seam: two `/** … */` blocks back-to-back means one of them is orphaned. Same applies to inline `//` doc lines.
+
 ## Testing
 
 Write tests as you implement features. Not after. Not "if there's time." If the logic is non-trivial — a new class, a state machine, a parser, a slicing helper, anything with invariants a future refactor could silently break — it ships with a test file.
