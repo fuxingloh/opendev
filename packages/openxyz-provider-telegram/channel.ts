@@ -82,7 +82,32 @@ export class TelegramChannel extends Channel<TelegramRaw> {
     // keep attachment-only messages (still unfixed in `chat@4.27.0`).
     for (const msg of messages) {
       const atts = msg.attachments ?? [];
-      if (atts.length === 0 || msg.text.trim()) continue;
+      if (atts.length === 0) continue;
+
+      // mnemonic/143 — two attachment-shape gaps in `@chat-adapter/telegram@4.27.0`
+      // that drop images before Bedrock sees them:
+      //
+      // 1. Photo attachments (`raw.photo`, `att.type === "image"`) ship without
+      //    `mimeType`. chat-sdk's `attachmentToPart` falls back to `image/png`
+      //    (`ai.ts:107`), Telegram always serves photos as JPEG, Bedrock detects
+      //    the format mismatch from magic bytes and 400s. Stamp `image/jpeg`.
+      //
+      // 2. Image-as-document (`raw.document` with `mime_type: image/...`,
+      //    `att.type === "file"`) is silently dropped because chat-sdk's
+      //    `attachmentToPart` only handles `file` parts whose mimeType matches
+      //    `isTextMimeType` (`ai.ts:122`). Reclassify as `att.type === "image"`
+      //    so it flows through the image branch.
+      for (const att of atts) {
+        if (att.type === "image" && !att.mimeType) {
+          (att as { mimeType: string }).mimeType = "image/jpeg";
+          continue;
+        }
+        if (att.type === "file" && att.mimeType?.startsWith("image/")) {
+          (att as { type: string }).type = "image";
+        }
+      }
+
+      if (msg.text.trim()) continue;
       const summary = atts.map((a) => `[attached ${a.type}]`).join(" ");
       (msg as { text: string }).text = summary || "[attachment]";
     }

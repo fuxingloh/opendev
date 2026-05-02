@@ -334,7 +334,7 @@ export class Agent {
     // System before conversation — Bedrock and some other providers reject
     // system messages interleaved between user/assistant turns. Per-message
     // env annotations live on the user messages themselves (channel concern).
-    const prompt: ModelMessage[] = [system, ...history];
+    const prompt: ModelMessage[] = [system, ...history.map(fixImageMediaType)];
 
     this.#fence = undefined;
 
@@ -643,4 +643,54 @@ export function hardTruncate(messages: ModelMessage[], budgetTokens: number): Mo
     i++;
   }
   return messages.slice(safeBoundary(messages, i));
+}
+
+/**
+ * mnemonic/143 — chat-sdk's `attachmentToPart` defaults to `image/png` when
+ * `att.mimeType` is undefined (`ai.ts:107`), but Telegram (and other
+ * platforms) deliver photos as JPEG. The bad mediaType is persisted in the
+ * session log; every subsequent turn re-sends it and Bedrock keeps
+ * rejecting with `messages.N.content.M.image.source.base64: image was
+ * specified using the image/png media type, but the image appears to be a
+ * image/jpeg image`.
+ *
+ * Fix: walk file-shaped parts on user messages, peek the base64 prefix
+ * (data URI or raw), detect the actual format from magic bytes, and
+ * rewrite the declared mediaType + data URI prefix to match. Idempotent —
+ * a message already labelled correctly is returned unchanged.
+ */
+function fixImageMediaType(msg: ModelMessage): ModelMessage {
+  if (msg.role !== "user" || typeof msg.content === "string") return msg;
+  let changed = false;
+  const next = msg.content.map((part) => {
+    const tp = (part as { type?: string }).type;
+    if (tp !== "file") return part;
+    const fp = part as { mediaType?: string; data?: unknown };
+    const declared = fp.mediaType ?? "";
+    if (!declared.startsWith("image/")) return part;
+    const data = fp.data;
+    if (typeof data !== "string") return part;
+    const actual = detectImageMediaType(data);
+    if (!actual || actual === declared) return part;
+    changed = true;
+    const fixed = data.startsWith("data:") ? data.replace(/^data:[^;]+/, `data:${actual}`) : data;
+    return { ...fp, mediaType: actual, data: fixed };
+  });
+  if (!changed) return msg;
+  return { ...msg, content: next } as ModelMessage;
+}
+
+/**
+ * Detect image format from base64 magic bytes. Reads the first few base64
+ * chars (3 chars = 2 bytes is enough for the four formats Anthropic
+ * accepts on Bedrock). Returns the IANA mediaType or undefined if
+ * unrecognised. Strip any `data:...;base64,` prefix first.
+ */
+function detectImageMediaType(data: string): string | undefined {
+  const b64 = data.startsWith("data:") ? data.slice(data.indexOf(",") + 1) : data;
+  if (b64.startsWith("/9j/")) return "image/jpeg";
+  if (b64.startsWith("iVBOR")) return "image/png";
+  if (b64.startsWith("R0lGOD")) return "image/gif";
+  if (b64.startsWith("UklGR")) return "image/webp";
+  return undefined;
 }
