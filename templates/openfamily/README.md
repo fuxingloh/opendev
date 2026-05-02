@@ -44,7 +44,7 @@ DMs are off by default. Add user IDs to `TELEGRAM_USER_ALLOWLIST` to let specifi
 
 - **Tune the persona** — `AGENTS.md` controls how chatty, how formal, and what topics the bot engages with. A family bot sounds different from a book-club bot.
 - **Add tools/skills** — drop files under `tools/` or `skills/` for domain-specific abilities (event scheduling, recipe lookup, trivia databases, etc.).
-- **Per-group customization** — you can branch the `reply()` logic in `channels/telegram.ts` to pick different agents based on `thread.channel.id`, if one instance serves multiple groups with different personas.
+- **Per-group customization** — you can branch the `reply()` logic in `channels/telegram.ts` to pick different agents based on `String(message.raw.chat.id)`, if one instance serves multiple groups with different personas.
 
 ## Layout
 

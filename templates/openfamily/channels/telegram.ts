@@ -44,7 +44,11 @@ export default new TelegramChannel({
 
 export function reply(thread: Thread, message: Message<TelegramRaw>) {
   if (thread.isDM) return userAllowlist.has(message.author.userId);
-  if (!groupAllowlist.has(thread.channel.id)) return false;
+  // `thread.channel.id` / `thread.channelId` are chat-sdk's `telegram:<chatId>`
+  // form (see `../chat/packages/adapter-telegram/src/index.ts:1009`); the env
+  // allowlist holds the bare Telegram chat IDs users see in the app, so go
+  // through `message.raw.chat.id` to compare apples-to-apples.
+  if (!groupAllowlist.has(String(message.raw.chat.id))) return false;
   // Lurk unless addressed.
   if (!message.isMention && !isReplyToBot(thread, message)) return false;
   return true;
