@@ -71,18 +71,17 @@ export class TelegramChannel extends Channel<TelegramRaw> {
     const botUserId = (this.adapter as { botUserId?: string }).botUserId;
 
     // mnemonic/143 — chat-sdk's `toAiMessages` filters out messages with
-    // empty `text.trim()` (`ai.ts:185`), even when they carry attachments.
-    // For an attachment-only reply (e.g. user photo-replies to the bot
-    // without a caption) the burst becomes empty after conversion →
-    // `session.append([])` is a no-op → the prompt ends with the previous
-    // assistant turn → Bedrock Sonnet 4.6 returns 400 ValidationException
-    // "This model does not support assistant message prefill". Inject a
-    // descriptive placeholder so the filter keeps the message and the
-    // image part flows through. Remove once chat-sdk's filter learns to
-    // keep attachment-only messages (still unfixed in `chat@4.27.0`).
+    // empty `text.trim()` (`ai.ts:185`), even when they carry attachments
+    // or non-text payloads (location, venue). The burst becomes empty after
+    // conversion → `session.append([])` is a no-op → the prompt ends with
+    // the previous assistant turn → Bedrock Sonnet 4.6 returns 400
+    // ValidationException "This model does not support assistant message
+    // prefill". Inject a descriptive placeholder so the filter keeps the
+    // message and (where applicable) image parts flow through. Remove once
+    // chat-sdk's filter learns to keep attachment-only messages (still
+    // unfixed in `chat@4.27.0`).
     for (const msg of messages) {
       const atts = msg.attachments ?? [];
-      if (atts.length === 0) continue;
 
       // mnemonic/143 — two attachment-shape gaps in `@chat-adapter/telegram@4.27.0`
       // that drop images before Bedrock sees them:
@@ -108,8 +107,20 @@ export class TelegramChannel extends Channel<TelegramRaw> {
       }
 
       if (msg.text.trim()) continue;
-      const summary = atts.map((a) => `[attached ${a.type}]`).join(" ");
-      (msg as { text: string }).text = summary || "[attachment]";
+
+      const raw = msg.raw as TelegramRaw | undefined;
+      const parts: string[] = [];
+      if (atts.length > 0) parts.push(atts.map((a) => `[attached ${a.type}]`).join(" "));
+      if (raw?.venue) {
+        const v = raw.venue;
+        const addr = v.address ? ` (${v.address})` : "";
+        parts.push(`[venue ${v.title}${addr} @ ${v.location.latitude},${v.location.longitude}]`);
+      } else if (raw?.location) {
+        const tag = raw.location.live_period ? "live location" : "location";
+        parts.push(`[${tag} ${raw.location.latitude},${raw.location.longitude}]`);
+      }
+      if (parts.length === 0) continue;
+      (msg as { text: string }).text = parts.join(" ");
     }
 
     const result = await toAiMessages(messages, {
@@ -277,6 +288,17 @@ export type TelegramRaw = TelegramRawMessage & {
   forward_from_chat?: TelegramChat;
   forward_sender_name?: string;
   is_automatic_forward?: boolean;
+  /**
+   * `@chat-adapter/telegram@4.27.0` doesn't model location/venue at all
+   * (`types.ts` `TelegramMessage` covers media only). Add it here so the
+   * placeholder pre-pass can inject text for these otherwise-empty messages.
+   */
+  location?: { latitude: number; longitude: number; live_period?: number };
+  venue?: {
+    location: { latitude: number; longitude: number };
+    title: string;
+    address?: string;
+  };
 };
 
 interface TelegramUser {
