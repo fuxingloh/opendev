@@ -147,6 +147,48 @@ describe("env", () => {
     }
   });
 
+  // ─── .default() ─────────────────────────────────────────────────────
+
+  test(".default() returns the fallback when missing — no throw", () => {
+    expect(env.TEST_OPTIONAL.default("fallback").toString()).toBe("fallback");
+  });
+
+  test(".default('') is allowed even though the schema is nonempty", () => {
+    // The fallback short-circuits the schema; nonempty applies only when raw is set.
+    expect(env.TEST_OPTIONAL.default("").toString()).toBe("");
+  });
+
+  test(".default() returns the env value when set", () => {
+    process.env.TEST_OPTIONAL = "actual";
+    expect(env.TEST_OPTIONAL.default("fallback").toString()).toBe("actual");
+  });
+
+  test(".default().transform() always invokes the fn (no undefined branch)", () => {
+    const set = env.TEST_LIST.default("").transform((s) => new Set(s.split(",").filter(Boolean)));
+    expect(set).toBeInstanceOf(Set);
+    expect(set.size).toBe(0);
+
+    process.env.TEST_LIST = "a,b,c";
+    const set2 = env.TEST_LIST.default("").transform((s) => new Set(s.split(",").filter(Boolean)));
+    expect(set2.size).toBe(3);
+  });
+
+  test(".default() composes with .describe (order doesn't matter)", () => {
+    expect(env.TEST_OPTIONAL.describe("a label").default("x").toString()).toBe("x");
+    expect(env.TEST_OPTIONAL.default("x").describe("a label").toString()).toBe("x");
+  });
+
+  test(".default() narrows back to required after .optional()", () => {
+    // An explicit fallback always returns a string, so the union collapses.
+    const v: string = env.TEST_OPTIONAL.optional().default("x").toString();
+    expect(v).toBe("x");
+  });
+
+  test(".default() still hard-fails on schema parse failure when set", () => {
+    process.env.TEST_PORT = "not-a-number";
+    expect(() => env.TEST_PORT.default("8080").pipe(z.coerce.number().int())).toThrow(EnvParseError);
+  });
+
   // ─── soft/hard-fail discriminator ────────────────────────────────────
 
   test("missing-required vs malformed-set is the soft/hard discriminator", () => {

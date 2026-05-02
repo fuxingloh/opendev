@@ -65,25 +65,47 @@ class Env<T extends string | undefined = string> extends String {
   readonly #key: string;
   readonly #kind: Kind;
   readonly #description: string | undefined;
+  readonly #default: string | undefined;
   readonly #schema: ZodType<T>;
 
-  constructor(key: string, kind: Kind = "required", description?: string) {
-    super(process.env[key] ?? "");
+  constructor(key: string, kind: Kind = "required", description?: string, defaultValue?: string) {
+    super(process.env[key] ?? defaultValue ?? "");
     this.#key = key;
     this.#kind = kind;
     this.#description = description;
+    this.#default = defaultValue;
     this.#schema = (kind === "optional" ? z.string().optional() : z.string().nonempty()) as unknown as ZodType<T>;
   }
 
   /** Stash a label that surfaces in error messages. */
   describe(desc: string): T & Env<T> {
-    return new Env<T>(this.#key, this.#kind, desc) as T & Env<T>;
+    return new Env<T>(this.#key, this.#kind, desc, this.#default) as T & Env<T>;
   }
 
   /** Switch to optional semantics — missing is no longer an error. */
   optional(): (string | undefined) & Env<string | undefined> {
-    return new Env<string | undefined>(this.#key, "optional", this.#description) as (string | undefined) &
+    return new Env<string | undefined>(this.#key, "optional", this.#description, this.#default) as (
+      | string
+      | undefined
+    ) &
       Env<string | undefined>;
+  }
+
+  /**
+   * Provide a fallback string used when the env var is missing or empty.
+   * After `.default(s)`, the value is guaranteed non-undefined: `.transform`
+   * / `.pipe` always receive a defined `s`, and `toString()` never throws
+   * `EnvNotFoundError`. Setting a default narrows back to required
+   * semantics regardless of any prior `.optional()`.
+   *
+   * Use this to fold the trailing `?? fallback` into the chain:
+   *
+   *   env.X.optional().transform((s) => new Set(s.split(","))) ?? new Set()
+   *   // becomes
+   *   env.X.default("").transform((s) => new Set(s.split(",").filter(Boolean)))
+   */
+  default(value: string): string & Env<string> {
+    return new Env<string>(this.#key, "required", this.#description, value) as string & Env<string>;
   }
 
   /**
@@ -138,6 +160,12 @@ class Env<T extends string | undefined = string> extends String {
   #parse(): T {
     const env = process.env[this.#key];
     const raw = env === "" ? undefined : env;
+    // Default short-circuits the schema entirely when raw is missing — the
+    // user-supplied fallback is trusted as-is, including the empty string
+    // (which the `nonempty` schema would otherwise reject).
+    if (raw === undefined && this.#default !== undefined) {
+      return this.#default as T;
+    }
     const result = this.#schema.safeParse(raw);
     if (!result.success) {
       if (raw === undefined) {
@@ -164,6 +192,7 @@ class Env<T extends string | undefined = string> extends String {
  *   env.GITHUB_TOKEN.optional()                                    // string | undefined
  *   env.X.optional().transform((s) => new Set(s.split(",")))       // T | undefined
  *   env.X.transform((s) => new Set(s.split(",")))                  // T (throws if missing)
+ *   env.X.default("").transform((s) => new Set(s.split(",").filter(Boolean)))  // T (fallback if missing)
  *   env.PORT.pipe(z.coerce.number())                               // number
  *   env.X.optional().pipe(z.coerce.number())                       // number | undefined
  *

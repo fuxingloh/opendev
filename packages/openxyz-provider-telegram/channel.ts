@@ -70,28 +70,59 @@ export class TelegramChannel extends Channel<TelegramRaw> {
     // conversation structure, not just flat text.
     const botUserId = (this.adapter as { botUserId?: string }).botUserId;
 
-    // Diagnostic for "agent didn't see attached photo": surface what arrives
-    // before toAiMessages so Vercel logs show whether attachments are present,
-    // whether fetchData survived cache rehydration, and whether anything
-    // downstream silently drops them. Remove once the photo path is proven.
+    // mnemonic/143 — diagnostic + stop-gap. Photo attachments arrive at
+    // `toModelMessages` with `hasFetchData: false`, so chat-sdk's
+    // `attachmentToPart` silently drops them. The block below logs the
+    // attachment shape (incl. `fetchMetadata`) and re-rehydrates locally
+    // when `fileId` is present. **Revert this whole block** (everything
+    // tagged `mnemonic/143`) once the upstream rehydrate path is fixed —
+    // grep `mnemonic/143` in this package to find all hooks.
+    const adapter = this.adapter as {
+      rehydrateAttachment?: (a: import("chat").Attachment) => import("chat").Attachment;
+    };
+    const adapterHasRehydrate = typeof adapter.rehydrateAttachment === "function";
     for (const msg of messages) {
       const atts = msg.attachments ?? [];
       if (atts.length === 0) continue;
+      // mnemonic/143
       console.log("[openxyz/telegram] inbound attachments", {
         msgId: msg.id,
         textLen: msg.text.length,
+        adapterHasRehydrate,
         attachments: atts.map((a) => ({
           type: a.type,
           mimeType: a.mimeType,
           name: a.name,
           hasFetchData: typeof a.fetchData === "function",
+          fetchMetadata: a.fetchMetadata,
         })),
       });
+
+      // mnemonic/143 stop-gap: chat-sdk's rehydrate path runs in chat.ts:2494
+      // only when `rehydrateMessage(entry, adapter)` is called, but our agent
+      // loop hands us messages via the `prior + burst` path which can include
+      // `recentMessages` reads that bypass that wiring. Re-rehydrate locally
+      // when we see a missing closure but a present `fetchMetadata.fileId`.
+      if (adapterHasRehydrate) {
+        msg.attachments = atts.map((att) => {
+          if (att.fetchData) return att;
+          const restored = adapter.rehydrateAttachment!(att);
+          if (restored.fetchData && !att.fetchData) {
+            console.log("[openxyz/telegram] manually rehydrated", {
+              msgId: msg.id,
+              type: att.type,
+              hadFileId: !!att.fetchMetadata?.fileId,
+            });
+          }
+          return restored;
+        });
+      }
     }
 
     const result = await toAiMessages(messages, {
       includeNames: !thread.isDM,
       transformMessage: (aiMsg, src) => annotate(aiMsg, src, botUserId),
+      // mnemonic/143
       onUnsupportedAttachment: (att, msg) => {
         console.warn("[openxyz/telegram] unsupported attachment skipped", {
           msgId: msg.id,
@@ -101,17 +132,24 @@ export class TelegramChannel extends Channel<TelegramRaw> {
       },
     });
 
-    // Result is filtered (empty-text msgs dropped) so indices don't align
-    // with `messages`. Log shape only — pair with the inbound log above by
-    // attachment count to confirm the photo became a `file` part.
+    // mnemonic/143 — outbound shape diagnostic. Result is filtered
+    // (empty-text msgs dropped) so indices don't align with `messages`.
+    // Log shape only — pair with the inbound log above by attachment count
+    // to confirm the photo became a `file` part.
     for (const m of result) {
       if (m.role !== "user" || typeof m.content === "string") continue;
       const parts = m.content.map((p) => {
-        if (p.type === "text") return { type: "text", textLen: p.text.length };
-        if (p.type === "file")
-          return { type: "file", mediaType: p.mediaType, dataLen: typeof p.data === "string" ? p.data.length : -1 };
-        if (p.type === "image") return { type: "image" };
-        return { type: p.type };
+        const tp = (p as { type: string }).type;
+        if (tp === "text") return { type: "text", textLen: (p as { text: string }).text.length };
+        if (tp === "file") {
+          const fp = p as { mediaType?: string; data?: unknown };
+          return {
+            type: "file",
+            mediaType: fp.mediaType,
+            dataLen: typeof fp.data === "string" ? fp.data.length : -1,
+          };
+        }
+        return { type: tp };
       });
       if (parts.some((p) => p.type !== "text")) {
         console.log("[openxyz/telegram] outbound user parts", { parts });
