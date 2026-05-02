@@ -70,98 +70,27 @@ export class TelegramChannel extends Channel<TelegramRaw> {
     // conversation structure, not just flat text.
     const botUserId = (this.adapter as { botUserId?: string }).botUserId;
 
-    // mnemonic/143 — `@chat-adapter/telegram@4.26.0` doesn't set
-    // `fetchMetadata.fileId` on attachments and doesn't implement
-    // `rehydrateAttachment`, so when chat-sdk's queue strips the `fetchData`
-    // closure during JSON roundtrip the closure is never restored, and
-    // `toAiMessages` silently drops the photo (early return at `ai.ts:119`).
-    // We have `msg.raw` (the full Telegram message) preserved through the
-    // roundtrip, so pull `file_id` directly off `raw.{photo,video,...}` and
-    // rebuild the closure ourselves. **Revert this whole block** (everything
-    // tagged `mnemonic/143`) once `@chat-adapter/telegram` ships fetchMetadata
-    // + rehydrateAttachment — grep `mnemonic/143` to find all hooks.
-    const adapterAny = this.adapter as { downloadFile?: (id: string) => Promise<Buffer> };
+    // mnemonic/143 — chat-sdk's `toAiMessages` filters out messages with
+    // empty `text.trim()` (`ai.ts:185`), even when they carry attachments.
+    // For an attachment-only reply (e.g. user photo-replies to the bot
+    // without a caption) the burst becomes empty after conversion →
+    // `session.append([])` is a no-op → the prompt ends with the previous
+    // assistant turn → Bedrock Sonnet 4.6 returns 400 ValidationException
+    // "This model does not support assistant message prefill". Inject a
+    // descriptive placeholder so the filter keeps the message and the
+    // image part flows through. Remove once chat-sdk's filter learns to
+    // keep attachment-only messages (still unfixed in `chat@4.27.0`).
     for (const msg of messages) {
       const atts = msg.attachments ?? [];
-      if (atts.length === 0) continue;
-      console.log("[openxyz/telegram] inbound attachments", {
-        msgId: msg.id,
-        textLen: msg.text.length,
-        attachments: atts.map((a) => ({
-          type: a.type,
-          mimeType: a.mimeType,
-          hasFetchData: typeof a.fetchData === "function",
-        })),
-      });
-
-      msg.attachments = atts.map((att) => {
-        if (att.fetchData) return att;
-        const fileId = recoverFileId(msg.raw, att.type);
-        if (!fileId || !adapterAny.downloadFile) return att;
-        console.log("[openxyz/telegram] recovered fileId from raw", {
-          msgId: msg.id,
-          type: att.type,
-          fileId,
-        });
-        return { ...att, fetchData: () => adapterAny.downloadFile!(fileId) };
-      });
-
-      // mnemonic/143 — chat-sdk's `toAiMessages` filters out messages with
-      // empty `text.trim()` (`ai.ts:185`), even when they carry attachments.
-      // For an attachment-only reply (e.g. user photo-replies to the bot
-      // without a caption), the burst becomes empty after conversion →
-      // `session.append([])` is a no-op → the prompt ends with the previous
-      // assistant turn → Bedrock Sonnet 4.6 returns `400 ValidationException:
-      // "This model does not support assistant message prefill"`. Inject a
-      // descriptive placeholder so the filter keeps the message and the
-      // image part flows through.
-      if (!msg.text.trim()) {
-        const summary = atts.map((a) => `[attached ${a.type}]`).join(" ");
-        (msg as { text: string }).text = summary || "[attachment]";
-        console.log("[openxyz/telegram] injected placeholder text for empty attachment-only msg", {
-          msgId: msg.id,
-          text: msg.text,
-        });
-      }
+      if (atts.length === 0 || msg.text.trim()) continue;
+      const summary = atts.map((a) => `[attached ${a.type}]`).join(" ");
+      (msg as { text: string }).text = summary || "[attachment]";
     }
 
     const result = await toAiMessages(messages, {
       includeNames: !thread.isDM,
       transformMessage: (aiMsg, src) => annotate(aiMsg, src, botUserId),
-      // mnemonic/143
-      onUnsupportedAttachment: (att, msg) => {
-        console.warn("[openxyz/telegram] unsupported attachment skipped", {
-          msgId: msg.id,
-          type: att.type,
-          mimeType: att.mimeType,
-        });
-      },
     });
-
-    // mnemonic/143 — outbound shape diagnostic. Result is filtered
-    // (empty-text msgs dropped) so indices don't align with `messages`.
-    // Log shape only — pair with the inbound log above by attachment count
-    // to confirm the photo became a `file` part.
-    for (const m of result) {
-      if (m.role !== "user" || typeof m.content === "string") continue;
-      const parts = m.content.map((p) => {
-        const tp = (p as { type: string }).type;
-        if (tp === "text") return { type: "text", textLen: (p as { text: string }).text.length };
-        if (tp === "file") {
-          const fp = p as { mediaType?: string; data?: unknown };
-          return {
-            type: "file",
-            mediaType: fp.mediaType,
-            dataLen: typeof fp.data === "string" ? fp.data.length : -1,
-          };
-        }
-        return { type: tp };
-      });
-      if (parts.some((p) => p.type !== "text")) {
-        console.log("[openxyz/telegram] outbound user parts", { parts });
-      }
-    }
-
     return result as ModelMessage[];
   }
 
@@ -344,29 +273,6 @@ type TelegramForwardOrigin =
   | { type: "hidden_user"; sender_user_name: string }
   | { type: "chat"; sender_chat: TelegramChat; author_signature?: string }
   | { type: "channel"; chat: TelegramChat; message_id: number; author_signature?: string };
-
-/**
- * mnemonic/143 — recover the Telegram `file_id` for an attachment by walking
- * the raw message. Mirrors `extractAttachments` in `@chat-adapter/telegram`
- * (`node_modules/@chat-adapter/telegram/dist/index.js:926`). Photos use the
- * largest size (`raw.photo.at(-1)`); voice and audio both surface as
- * `audio` attachments — prefer `audio.file_id`, fall back to `voice.file_id`.
- */
-function recoverFileId(raw: TelegramRaw | undefined, type: string): string | undefined {
-  if (!raw) return undefined;
-  const r = raw as TelegramRaw & {
-    photo?: Array<{ file_id?: string }>;
-    video?: { file_id?: string };
-    audio?: { file_id?: string };
-    voice?: { file_id?: string };
-    document?: { file_id?: string };
-  };
-  if (type === "image") return r.photo?.at(-1)?.file_id;
-  if (type === "video") return r.video?.file_id;
-  if (type === "audio") return r.audio?.file_id ?? r.voice?.file_id;
-  if (type === "file") return r.document?.file_id;
-  return undefined;
-}
 
 /**
  * Extract the trailing numeric segment of a Telegram message id for the
