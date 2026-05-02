@@ -70,51 +70,57 @@ export class TelegramChannel extends Channel<TelegramRaw> {
     // conversation structure, not just flat text.
     const botUserId = (this.adapter as { botUserId?: string }).botUserId;
 
-    // mnemonic/143 — diagnostic + stop-gap. Photo attachments arrive at
-    // `toModelMessages` with `hasFetchData: false`, so chat-sdk's
-    // `attachmentToPart` silently drops them. The block below logs the
-    // attachment shape (incl. `fetchMetadata`) and re-rehydrates locally
-    // when `fileId` is present. **Revert this whole block** (everything
-    // tagged `mnemonic/143`) once the upstream rehydrate path is fixed —
-    // grep `mnemonic/143` in this package to find all hooks.
-    const adapter = this.adapter as {
-      rehydrateAttachment?: (a: import("chat").Attachment) => import("chat").Attachment;
-    };
-    const adapterHasRehydrate = typeof adapter.rehydrateAttachment === "function";
+    // mnemonic/143 — `@chat-adapter/telegram@4.26.0` doesn't set
+    // `fetchMetadata.fileId` on attachments and doesn't implement
+    // `rehydrateAttachment`, so when chat-sdk's queue strips the `fetchData`
+    // closure during JSON roundtrip the closure is never restored, and
+    // `toAiMessages` silently drops the photo (early return at `ai.ts:119`).
+    // We have `msg.raw` (the full Telegram message) preserved through the
+    // roundtrip, so pull `file_id` directly off `raw.{photo,video,...}` and
+    // rebuild the closure ourselves. **Revert this whole block** (everything
+    // tagged `mnemonic/143`) once `@chat-adapter/telegram` ships fetchMetadata
+    // + rehydrateAttachment — grep `mnemonic/143` to find all hooks.
+    const adapterAny = this.adapter as { downloadFile?: (id: string) => Promise<Buffer> };
     for (const msg of messages) {
       const atts = msg.attachments ?? [];
       if (atts.length === 0) continue;
-      // mnemonic/143
       console.log("[openxyz/telegram] inbound attachments", {
         msgId: msg.id,
         textLen: msg.text.length,
-        adapterHasRehydrate,
         attachments: atts.map((a) => ({
           type: a.type,
           mimeType: a.mimeType,
-          name: a.name,
           hasFetchData: typeof a.fetchData === "function",
-          fetchMetadata: a.fetchMetadata,
         })),
       });
 
-      // mnemonic/143 stop-gap: chat-sdk's rehydrate path runs in chat.ts:2494
-      // only when `rehydrateMessage(entry, adapter)` is called, but our agent
-      // loop hands us messages via the `prior + burst` path which can include
-      // `recentMessages` reads that bypass that wiring. Re-rehydrate locally
-      // when we see a missing closure but a present `fetchMetadata.fileId`.
-      if (adapterHasRehydrate) {
-        msg.attachments = atts.map((att) => {
-          if (att.fetchData) return att;
-          const restored = adapter.rehydrateAttachment!(att);
-          if (restored.fetchData && !att.fetchData) {
-            console.log("[openxyz/telegram] manually rehydrated", {
-              msgId: msg.id,
-              type: att.type,
-              hadFileId: !!att.fetchMetadata?.fileId,
-            });
-          }
-          return restored;
+      msg.attachments = atts.map((att) => {
+        if (att.fetchData) return att;
+        const fileId = recoverFileId(msg.raw, att.type);
+        if (!fileId || !adapterAny.downloadFile) return att;
+        console.log("[openxyz/telegram] recovered fileId from raw", {
+          msgId: msg.id,
+          type: att.type,
+          fileId,
+        });
+        return { ...att, fetchData: () => adapterAny.downloadFile!(fileId) };
+      });
+
+      // mnemonic/143 — chat-sdk's `toAiMessages` filters out messages with
+      // empty `text.trim()` (`ai.ts:185`), even when they carry attachments.
+      // For an attachment-only reply (e.g. user photo-replies to the bot
+      // without a caption), the burst becomes empty after conversion →
+      // `session.append([])` is a no-op → the prompt ends with the previous
+      // assistant turn → Bedrock Sonnet 4.6 returns `400 ValidationException:
+      // "This model does not support assistant message prefill"`. Inject a
+      // descriptive placeholder so the filter keeps the message and the
+      // image part flows through.
+      if (!msg.text.trim()) {
+        const summary = atts.map((a) => `[attached ${a.type}]`).join(" ");
+        (msg as { text: string }).text = summary || "[attachment]";
+        console.log("[openxyz/telegram] injected placeholder text for empty attachment-only msg", {
+          msgId: msg.id,
+          text: msg.text,
         });
       }
     }
@@ -338,6 +344,29 @@ type TelegramForwardOrigin =
   | { type: "hidden_user"; sender_user_name: string }
   | { type: "chat"; sender_chat: TelegramChat; author_signature?: string }
   | { type: "channel"; chat: TelegramChat; message_id: number; author_signature?: string };
+
+/**
+ * mnemonic/143 — recover the Telegram `file_id` for an attachment by walking
+ * the raw message. Mirrors `extractAttachments` in `@chat-adapter/telegram`
+ * (`node_modules/@chat-adapter/telegram/dist/index.js:926`). Photos use the
+ * largest size (`raw.photo.at(-1)`); voice and audio both surface as
+ * `audio` attachments — prefer `audio.file_id`, fall back to `voice.file_id`.
+ */
+function recoverFileId(raw: TelegramRaw | undefined, type: string): string | undefined {
+  if (!raw) return undefined;
+  const r = raw as TelegramRaw & {
+    photo?: Array<{ file_id?: string }>;
+    video?: { file_id?: string };
+    audio?: { file_id?: string };
+    voice?: { file_id?: string };
+    document?: { file_id?: string };
+  };
+  if (type === "image") return r.photo?.at(-1)?.file_id;
+  if (type === "video") return r.video?.file_id;
+  if (type === "audio") return r.audio?.file_id ?? r.voice?.file_id;
+  if (type === "file") return r.document?.file_id;
+  return undefined;
+}
 
 /**
  * Extract the trailing numeric segment of a Telegram message id for the
