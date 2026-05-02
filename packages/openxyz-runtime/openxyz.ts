@@ -374,7 +374,7 @@ async function getTurnSummary(agent: Agent, channel: Channel, thread: Thread): P
         {
           role: "user" as const,
           content:
-            "Write a one-line git-style commit message (≤72 characters, imperative mood, no quotes, no trailing period) describing the file edits you made in your last turn. If you didn't edit any files, output exactly: openxyz: no edits. Output the message only — no preamble, no explanation.",
+            "Write a one-line natural description (≤80 characters, no quotes, no trailing period) of the file edits you made in your last turn. Plain prose — do NOT use Conventional Commits semantic prefixes like `feat:`, `fix:`, `refactor:`, `chore:`, `docs:`. If you didn't edit any files, output exactly: no edits. Output the message only — no preamble, no explanation.",
         },
       ],
     });

@@ -20,11 +20,13 @@ export type Permission = "read-write" | "read-only";
  * 3. Agent runs, reads/writes via the mounted filesystem.
  * 4. `commit(ctx)` — optional post-turn hook. Writable drives flush changes
  *    here (e.g. commit + push for GitHubDrive). Runs after the reply is
- *    posted to the thread. `ctx.summary` is a short LLM-authored description
- *    of the turn's edits — runtime asks the same agent to summarize the
- *    just-finished turn before this fires (one extra `generate` call), so
- *    drives that need a meaningful label (git commit message, sync
- *    description) get one without each drive making its own LLM call.
+ *    posted to the thread. `ctx.getSummary()` returns a short LLM-authored
+ *    natural-prose description of the turn's edits (no Conventional Commits
+ *    prefixes like `feat:`/`fix:`) — runtime asks the same agent to
+ *    summarize the just-finished turn before this fires (one extra
+ *    `generate` call), so drives that need a meaningful label (commit
+ *    message, sync description) get one without each drive making its own
+ *    LLM call.
  *
  * Drives don't see `Thread`. Throw with a descriptive message when you
  * need to communicate a failure (including partial failures like "pushed
