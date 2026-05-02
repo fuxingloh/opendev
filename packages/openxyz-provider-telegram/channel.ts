@@ -119,7 +119,20 @@ export class TelegramChannel extends Channel<TelegramRaw> {
         const tag = raw.location.live_period ? "live location" : "location";
         parts.push(`[${tag} ${raw.location.latitude},${raw.location.longitude}]`);
       }
-      if (parts.length === 0) continue;
+
+      // Last-resort fallback. Telegram has many message types we don't
+      // explicitly model (sticker, contact, poll, dice, video_note,
+      // animation, game, ...) and the upstream adapter surfaces them with
+      // empty `text` and no attachments. Never let an empty user turn
+      // through to the model — serialize the raw update (sans envelope
+      // noise) so the agent has the actual payload to interpret. Sticker
+      // emoji, poll questions, contact details, dice values, etc. all flow
+      // through verbatim and the agent can respond meaningfully.
+      if (parts.length === 0) {
+        const envelope = new Set(["chat", "date", "from", "message_id", "message_thread_id", "entities"]);
+        const payload = raw ? Object.fromEntries(Object.entries(raw).filter(([k]) => !envelope.has(k))) : {};
+        parts.push(`[telegram message ${JSON.stringify(payload)}]`);
+      }
       (msg as { text: string }).text = parts.join(" ");
     }
 
